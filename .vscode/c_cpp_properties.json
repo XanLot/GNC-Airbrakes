@@ -1,0 +1,26 @@
+{
+    "configurations": [
+        {
+            "name": "Teensy 4.1",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/teensy4",
+                "${workspaceFolder}/libraries/**"
+            ],
+            "defines": [
+                "F_CPU=600000000",
+                "USB_SERIAL",
+                "LAYOUT_US_ENGLISH",
+                "__IMXRT1062__",
+                "TEENSYDUINO=159",
+                "ARDUINO_TEENSY41",
+                "ARDUINO=10813"
+            ],
+            "compilerPath": "${workspaceFolder}/tools/compiler/arm-gnu-toolchain/bin/arm-none-eabi-g++",
+            "cStandard": "c17",
+            "cppStandard": "c++23",
+            "intelliSenseMode": "gcc-arm"
+        }
+    ],
+    "version": 4
+}

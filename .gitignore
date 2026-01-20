@@ -1,0 +1,27 @@
+# Build outputs
+build/
+*.elf
+*.hex
+*.map
+*.dump
+
+# Toolchain
+tools/compiler/
+
+# Bear compile database
+.bearwrap/
+compile_commands.json
+compile_commands.events.json
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/c_cpp_properties.json
+
+# Editor backups
+*~
+*.swp
+*.swo
