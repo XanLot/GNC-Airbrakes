@@ -1,8 +1,11 @@
-# GNC-Airbrakes Teensy 4.1 Firmware Makefile
-# Based on reference Makefile by Jack Miller 2024 (Github: guywithhat99)
+# Made by Jack Miller 2024 (Github: guywithhat99)
+# Thanks to Jackson Stepka (Github: Pandabear1125); a lot of code is based off his original makefile 
 
 # Detect the current operating system using uname
 UNAME := $(shell uname -s)
+
+# Detect if running under WSL
+IS_WSL := $(shell grep -qi microsoft /proc/version 2>/dev/null && echo 1)
 
 # The name of the target executable
 TARGET_EXEC := firmware
@@ -19,16 +22,19 @@ LIBRARY_SRC_DIRS := ./libraries
 SRC_SRC_DIRS := ./src
 
 # Find all C, C++, and assembly source files in the specified directories
+# Note: Single quotes are used to prevent the shell from expanding '*'
 TEENSY_SRC := $(shell find $(TEENSY_SRC_DIRS) -name '*.cpp' -or -name '*.c')
 LIBRARY_SRC := $(shell find $(LIBRARY_SRC_DIRS) -name '*.cpp' -or -name '*.c')
 SRC_SRC := $(shell find $(SRC_SRC_DIRS) -name '*.cpp' -or -name '*.c')
 
 # Generate object file paths by prepending BUILD_DIR and appending .o to source files
+# Example: ./your_dir/hello.cpp turns into ./build/./your_dir/hello.cpp.o
 TEENSY_OBJS := $(TEENSY_SRC:%=$(BUILD_DIR)/%.o)
 LIBRARY_OBJS := $(LIBRARY_SRC:%=$(BUILD_DIR)/%.o)
-SRC_OBJS := $(SRC_SRC:%=$(BUILD_DIR)/%.o)
+SRC_OBJS :=  $(SRC_SRC:%=$(BUILD_DIR)/%.o)
 
 # Generate dependency file paths by replacing .o with .d in object file paths
+# Example: ./build/hello.cpp.o turns into ./build/hello.cpp.d
 TEENSY_DEPS := $(TEENSY_OBJS:.o=.d)
 LIBRARY_DEPS := $(LIBRARY_OBJS:.o=.d)
 SRC_DEPS := $(SRC_OBJS:.o=.d)
@@ -46,7 +52,7 @@ SRC_INC_FLAGS := $(addprefix -I,$(SRC_INC_DIRS))
 INCLUDE_FLAGS := $(TEENSY_INC_FLAGS) $(LIBRARY_INC_FLAGS) $(SRC_INC_FLAGS)
 
 # Compiler flags specific to Teensy 4.1
-TEENSY4_FLAGS = -DF_CPU=600000000 -DUSB_SERIAL -DLAYOUT_US_ENGLISH -D__IMXRT1062__ -DTEENSYDUINO=159 -DARDUINO_TEENSY41 -DARDUINO=10813
+TEENSY4_FLAGS = -DF_CPU=600000000 -DUSB_CUSTOM -DLAYOUT_US_ENGLISH -D__IMXRT1062__ -DTEENSYDUINO=159 -DARDUINO_TEENSY41 -DARDUINO=10813 -DFIRMWARE
 
 # CPU flags to optimize code for the Teensy processor
 CPU_CFLAGS = -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-d16 -mthumb
@@ -54,6 +60,13 @@ CPU_CFLAGS = -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-d16 -mthumb
 DEFINES := $(TEENSY4_FLAGS)
 
 # Preprocessor flags for both C and C++ files
+# -MMD: Generate dependency files for each source file
+# -MP: Add a phony target for each dependency to avoid errors if the dependency is missing
+# -ffunction-sections: Place each function in its own section to allow the linker to remove unused functions
+# -fdata-sections: Place each variable in its own section to allow the linker to remove unused variables
+# -O2: Optimize the code for speed
+# --specs=nano.specs: Use newlib nano instead of full newlib to reduce binary size
+# -g3: Generate debug information for GDB. Level 3 includes the most information possible
 CPPFLAGS := $(INCLUDE_FLAGS) $(DEFINES) -MMD -MP -ffunction-sections -fdata-sections -O2 --specs=nano.specs -g3
 
 # Compiler flags for C files
@@ -63,58 +76,89 @@ CFLAGS := $(CPU_CFLAGS)
 CXXFLAGS := $(CPU_CFLAGS) -std=gnu++23 \
             -felide-constructors -fno-exceptions -fpermissive -fno-rtti \
             -Wno-error=narrowing -Wno-trigraphs -Wno-comment -Wall -Werror \
-            -Wno-volatile
+			-Wno-volatile
 
 # Linker flags, including Teensy-specific linker script
+# --gc-sections: Remove unused sections to reduce binary size
+# --relax: Allow linker to relax some constraints to sometimes generate smaller code
+# -Tteensy4/imxrt1062_t41.ld: Use the Teensy 4.1 linker script
+# --print-memory-usage: Print memory usage after linking
+# -Map=... and --cref: Generate a cross-reference map file
 LINKING_FLAGS = -Wl,--gc-sections,--relax,-Tteensy4/imxrt1062_t41.ld,--print-memory-usage,-Map=$(BUILD_DIR)/$(TARGET_EXEC).map,--cref
 
 # Set the Arduino path based on the detected operating system
 ifeq ($(UNAME),Darwin)
  ARDUINO_PATH = $(abspath $(HOME)/Library/Arduino15)
- $(info Detected macOS)
+ $(info We've detected you are using a Mac! Consult God if this breaks.)
 endif
 ifeq ($(UNAME),Linux)
  ARDUINO_PATH = $(abspath $(HOME)/.arduino15)
- $(info Detected Linux)
+ $(info We've detected you're on Linux! Nerd.)
 endif
 
-# Base arm-none-eabi tool paths
+# Base arm-none-eabi and Teensyduino tool paths
 COMPILER_TOOLS_PATH = $(TOOLS_DIR)/compiler/arm-gnu-toolchain/bin
 
 # arm-none-eabi tools
-COMPILER_CPP = $(COMPILER_TOOLS_PATH)/arm-none-eabi-g++
-COMPILER_C   = $(COMPILER_TOOLS_PATH)/arm-none-eabi-gcc
-AR           = $(COMPILER_TOOLS_PATH)/arm-none-eabi-ar
-GDB          = $(COMPILER_TOOLS_PATH)/arm-none-eabi-gdb
-OBJCOPY      = $(COMPILER_TOOLS_PATH)/arm-none-eabi-objcopy
-OBJDUMP      = $(COMPILER_TOOLS_PATH)/arm-none-eabi-objdump
-READELF      = $(COMPILER_TOOLS_PATH)/arm-none-eabi-readelf
-ADDR2LINE    = $(COMPILER_TOOLS_PATH)/arm-none-eabi-addr2line
-SIZE         = $(COMPILER_TOOLS_PATH)/arm-none-eabi-size
+COMPILER_CPP	= $(COMPILER_TOOLS_PATH)/arm-none-eabi-g++
+COMPILER_C		= $(COMPILER_TOOLS_PATH)/arm-none-eabi-gcc
+AR				= $(COMPILER_TOOLS_PATH)/arm-none-eabi-ar
+GDB				= $(COMPILER_TOOLS_PATH)/arm-none-eabi-gdb
+OBJCOPY			= $(COMPILER_TOOLS_PATH)/arm-none-eabi-objcopy
+OBJDUMP			= $(COMPILER_TOOLS_PATH)/arm-none-eabi-objdump
+READELF			= $(COMPILER_TOOLS_PATH)/arm-none-eabi-readelf
+ADDR2LINE		= $(COMPILER_TOOLS_PATH)/arm-none-eabi-addr2line
+SIZE			= $(COMPILER_TOOLS_PATH)/arm-none-eabi-size
+
 
 # Utilize all available CPU cores for parallel build
 MAKEFLAGS += -j$(nproc)
 
-# Phony targets
-.PHONY: build clean clean_src clean_libs clean_teensy4 upload install help cdb
+# Phony target to force a build every time
+.PHONY: build
 
-# Main build target
+
+# Main build target; depends on the target executable and git scraper
 build: $(BUILD_DIR)/$(TARGET_EXEC)
 
-# Final linking step to create the executable
-$(BUILD_DIR)/$(TARGET_EXEC): $(SRC_OBJS) $(LIBRARY_OBJS) $(TEENSY_OBJS)
+# Final linking step to create the executable.
+# This rule links all the object files to produce the final ELF executable.
+$(BUILD_DIR)/$(TARGET_EXEC): $(SRC_OBJS) $(LIBRARY_OBJS) $(TEENSY_OBJS) 
+    # Invoke the C++ compiler as the linker.
+    # - $(COMPILER_CPP): The compiler executable.
+    # - $(CPPFLAGS): Preprocessor and common compiler flags.
+    # - $(CXXFLAGS): C++ compiler flags.
+    # - $(LIBRARY_OBJS), $(TEENSY_OBJS), $(SRC_OBJS): Object files to link.
+    # - $(LINKING_FLAGS): Linker flags, including the linker script.
+    # - '-o $(BUILD_DIR)/$(TARGET_EXEC).elf': Output the ELF executable to the build directory.
 	@$(COMPILER_CPP) $(CPPFLAGS) $(CXXFLAGS) $(LIBRARY_OBJS) $(TEENSY_OBJS) $(SRC_OBJS) $(LINKING_FLAGS) -o $(BUILD_DIR)/$(TARGET_EXEC).elf
+
+    # Copy the ELF executable to the root directory.
 	@cp $(BUILD_DIR)/$(TARGET_EXEC).elf .
+
+    # Inform the user that the HEX file is being constructed.
 	@echo [Constructing $(TARGET_EXEC).hex]
+
+    # Convert the ELF executable to an Intel HEX format, which is required for uploading to the Teensy board.
+    # - '-O ihex': Specifies the output format as Intel HEX.
+    # - '-R .eeprom': Removes the .eeprom section from the output, as it's not needed for flashing.
+    # - '$(TARGET_EXEC).elf': The input ELF executable.
+    # - '$(TARGET_EXEC).hex': The output HEX file.
 	@$(OBJCOPY) -O ihex -R .eeprom $(TARGET_EXEC).elf $(TARGET_EXEC).hex
+
+    # Ensure the HEX file has execute permissions.
 	@chmod +x $(TARGET_EXEC).hex
+
+    # Disassemble the ELF executable to a .dump file
 	@$(OBJDUMP) -dstz $(BUILD_DIR)/$(TARGET_EXEC).elf > $(BUILD_DIR)/$(TARGET_EXEC).dump
+
 
 # Build step for compiling C source files
 $(BUILD_DIR)/%.c.o: %.c
 	@mkdir -p $(dir $@)
 	@echo [Building $<]
 	@$(COMPILER_C) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+    # Disassemble the object file to a .dump file
 	@$(OBJDUMP) -dstz $@ > $@.dump
 
 # Build step for compiling C++ source files
@@ -122,7 +166,12 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 	@mkdir -p $(dir $@)
 	@echo [Building $<]
 	@$(COMPILER_CPP) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+    # Disassemble the object file to a .dump file
 	@$(OBJDUMP) -dstz $@ > $@.dump
+
+
+# Phony target to prevent conflicts with files named 'clean' and force a rebuild every time
+.PHONY: clean
 
 # Clean the build directory and remove generated executables
 clean:
@@ -131,17 +180,18 @@ clean:
 
 # Clean only the source object files
 clean_src:
-	rm -rf $(BUILD_DIR)/src
+	rm -r $(BUILD_DIR)/src
 
 # Clean only the library object files
 clean_libs:
-	rm -rf $(BUILD_DIR)/libraries
+	rm -r $(BUILD_DIR)/libraries
 
 # Clean only the Teensy object files
 clean_teensy4:
-	rm -rf $(BUILD_DIR)/teensy4
+	rm -r $(BUILD_DIR)/teensy4
 
 # Include the dependency files to manage header file dependencies
+# The '-' suppresses errors if the files are missing (which they will be on the first run)
 -include $(TEENSY_DEPS)
 -include $(LIBRARY_DEPS)
 -include $(SRC_DEPS)
@@ -150,40 +200,82 @@ clean_teensy4:
 upload: build
 	@echo [Uploading] - If this fails, press the button on the teensy and re-run 'make upload'
 	@tycmd upload $(TARGET_EXEC).hex
+    # Teensy serial isn't immediately available after upload, so we wait a bit
+    # The Teensy waits for 20 + 280 + 20 ms after power up/boot
+	@sleep 0.4s
+	@bash $(TOOLS_DIR)/monitor.sh
+
 
 # Install required tools for building and uploading firmware
 install:
 	@bash $(TOOLS_DIR)/install_tytools.sh
 	@bash $(TOOLS_DIR)/install_compiler.sh
 
-# Resets teensy and switches it into boot-loader mode
+
+# Sets up USB passthrough for Teensy on WSL
+wsl:
+ifdef IS_WSL
+	@echo [Detected WSL environment!]
+	@echo [Setting up Teensy for WSL...]
+	@echo
+	@echo ">>> An elevated PowerShell window will open. Please follow the prompts there."
+	@echo ">>> You may need to press the Teensy button when asked."
+	@echo
+	@powershell.exe -Command "Start-Process -FilePath powershell -Verb RunAs -ArgumentList '-ExecutionPolicy Bypass -File \"$$(wslpath -w $(TOOLS_DIR)/Setup-Teensy.ps1)\"'"
+else
+	@echo [Not running under WSL]
+endif
+
+
+# starts GDB and attaches to the firmware running on a connected Teensy
+# calls a script to prepare the GDB environment, this finds the exact port Teensy is connected to
+gdb:
+	@echo [Starting GDB]
+	@bash $(TOOLS_DIR)/prepare_gdb.sh
+	@$(GDB) -x $(TOOLS_DIR)/gdb_commands.txt --args $(TARGET_EXEC).elf
+
+
+# monitors currently running firmware on robot
+monitor:
+	@echo [Monitoring]
+	@bash $(TOOLS_DIR)/monitor.sh
+
+
+# resets teensy and switches it into boot-loader mode, effectively stopping any execution
+# this only works if power is consistent, will restart loaded firmware if turned off and on again
 kill:
 	@echo [Attempting to Kill Teensy]
 	@tycmd reset -b
 
-# Restarts teensy
+
+# restarts teensy
 restart:
 	@echo [Attempting to Restart Firmware]
 	@tycmd reset
 
-help:
+
+help: 
 	@echo "Basic usage: make [target]"
 	@echo "Targets:"
-	@echo "  install:      installs all required dependencies (ARM toolchain and tycmd)"
+	@echo "  install:      installs all required dependencies"
 	@echo "  build:        compiles the source code and links with libraries"
 	@echo "  upload:       builds the source and uploads it to the Teensy"
-	@echo "  clean:        removes all build artifacts"
+	@echo "  gdb:          starts GDB and attaches to the firmware running on a connected Teensy"
+	@echo "  monitor:      monitors any actively running firmware and displays serial output"
 	@echo "  kill:         stops any running firmware"
 	@echo "  restart:      restarts any running firmware"
-	@echo "  cdb:          generates compile_commands.json for IDE support"
+
 
 # --- Compile DB generation with Bear -----------------------------------------
+.PHONY: cdb
 
 # Directory to host wrapper symlinks
 BEAR_WRAPDIR ?= .bearwrap
 
 # Try to find Bear's wrapper path on common installs
+# 1) Homebrew (stable path via /opt, not versioned Cellar)
 BEAR_WRAPPER ?= $(shell brew --prefix bear 2>/dev/null)/lib/bear/wrapper
+# 2) Fallbacks for typical Linux layouts
 ifeq ($(wildcard $(BEAR_WRAPPER)),)
   BEAR_WRAPPER := /usr/lib/bear/wrapper
 endif
@@ -191,15 +283,22 @@ ifeq ($(wildcard $(BEAR_WRAPPER)),)
   BEAR_WRAPPER := /usr/lib/x86_64-linux-gnu/bear/wrapper
 endif
 
-# Generate compile_commands.json for clangd
+# Run this target to generate compile_commands.json for clangd.
+# To make clangd parse our project correctly, configure extra args:
+# * --query-driver=/path/to/compiler so it trusts the cross-compiler in firmware/tools/compiler/arm-gnu-toolchain/bin
+# * --compile-args=-isystem./teensy4 and --compile-args=-isystem./libraries to silence errors in external headers
+# Add these in your IDE's clangd settings (e.g. .vscode/settings.json, .zed/settings.json, etc.).
 cdb:
-	@command -v bear >/dev/null || { echo "Error: bear not found in PATH. Install with: brew install bear"; exit 1; }
+	@command -v bear >/dev/null || { echo "Error: bear not found in PATH"; exit 1; }
 	@test -x "$(BEAR_WRAPPER)" || { echo "Error: bear wrapper not found at $(BEAR_WRAPPER)"; exit 1; }
 	@echo "[cdb] Preparing Bear wrapper links in $(BEAR_WRAPDIR)"
 	@rm -f compile_commands.json compile_commands.events.json
 	@mkdir -p $(BEAR_WRAPDIR)
+	# Create wrapper symlinks named like your cross-compilers:
 	@ln -sf "$(BEAR_WRAPPER)" "$(BEAR_WRAPDIR)/arm-none-eabi-g++"
 	@ln -sf "$(BEAR_WRAPPER)" "$(BEAR_WRAPDIR)/arm-none-eabi-gcc"
+	# Put toolchain bin in PATH so the wrapper can find the real compilers,
+	# and ask Bear to put $(BEAR_WRAPDIR) at the *front* of PATH for interception.
 	@echo "[cdb] Running build through Bear to capture commands"
 	@PATH="$(COMPILER_TOOLS_PATH):$$PATH" \
 	bear --wrapper-dir "$(BEAR_WRAPDIR)" -- \
