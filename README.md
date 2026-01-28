@@ -14,7 +14,7 @@ Firmware for the IREC Airbrakes project, targeting Teensy 4.1.
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-org/GNC-Airbrakes.git
+   git clone https://github.com/XanLot/GNC-Airbrakes.git
    cd GNC-Airbrakes
    ```
 
