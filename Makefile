@@ -203,7 +203,7 @@ upload: build
     # Teensy serial isn't immediately available after upload, so we wait a bit
     # The Teensy waits for 20 + 280 + 20 ms after power up/boot
 	@sleep 0.4s
-	@bash $(TOOLS_DIR)/monitor.sh
+	@tycmd monitor
 
 
 # Install required tools for building and uploading firmware
@@ -238,7 +238,7 @@ gdb:
 # monitors currently running firmware on robot
 monitor:
 	@echo [Monitoring]
-	@bash $(TOOLS_DIR)/monitor.sh
+	@tycmd monitor
 
 
 # resets teensy and switches it into boot-loader mode, effectively stopping any execution

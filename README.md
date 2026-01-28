@@ -4,9 +4,10 @@ Firmware for the IREC Airbrakes project, targeting Teensy 4.1.
 
 ## Prerequisites
 
-- macOS or Linux
+- macOS, Linux, or Windows with WSL
 - Git
 - Homebrew (macOS) for installing dependencies
+- [usbipd-win](https://github.com/dorssel/usbipd-win/releases) (Windows/WSL only, for USB passthrough)
 - VS Code with C/C++ extension (optional, for IDE support)
 
 ## Quick Start
@@ -31,10 +32,13 @@ Firmware for the IREC Airbrakes project, targeting Teensy 4.1.
    ```
 
 4. **Upload to Teensy 4.1**
+
    ```bash
    make upload
    ```
    If upload fails, press the button on the Teensy and retry.
+
+   **If you are on Windows Subsystem for Linux (WSL):** You must first install [usbipd-win](https://github.com/dorssel/usbipd-win/releases) and run `make wsl` to attach the Teensy USB device to WSL.
 
 ## Make Targets
 
@@ -42,6 +46,7 @@ Firmware for the IREC Airbrakes project, targeting Teensy 4.1.
 |--------|-------------|
 | `make install` | Install ARM toolchain and tycmd uploader |
 | `make build` | Compile firmware and generate .hex file |
+| `make wsl` | Attach Teensy USB to WSL (Windows/WSL only) |
 | `make upload` | Build and flash to Teensy 4.1 |
 | `make clean` | Remove all build artifacts |
 | `make kill` | Stop running firmware (enter bootloader) |
