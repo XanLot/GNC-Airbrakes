@@ -5,8 +5,10 @@
 
 #include <Arduino.h>
 #include "imu.hpp"
+#include "sd_log_file.hpp"
 
 IMU imu;
+sd_log sdLog;
 
 void setup() {
     Serial.begin(115200);
@@ -19,6 +21,7 @@ void setup() {
 
 void loop() {
     imu.update();
+    sdLog.logIMUData(imu.readAll());
 
     if (imu.gyroReady()) {
         Vec3 gyro = imu.readGyro();
@@ -52,4 +55,6 @@ void loop() {
         Serial.print(quat.y); Serial.print(",");
         Serial.print(quat.z); Serial.println("]");
     }
+
+    i
 }
