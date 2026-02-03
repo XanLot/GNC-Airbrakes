@@ -21,28 +21,32 @@ void setup() {
 
 void loop() {
     imu.update();
+
+    // Temporary storage for readings
     Vec3 gyro;
     Vec3 accel;
     Vec3 mag;
 
-
-    //if there is new data from the gyro on the imu sensor
+    // If there is new data from the gyro
     if (imu.gyroReady()) {
         gyro = imu.readGyro();
-        sdLog.logGyroData(gyro); 
+        sdLog.logGyroData(gyro);
     }
 
-    //if there is new data from the acceleromoter on the imu sensor
+    // If there is new data from the accelerometer
     if (imu.accelReady()) {
         accel = imu.readAccel();
-        
+        sdLog.logAccelData(accel);
     }
 
-    //if there is new data from the magnetomter on the imu sensor
+    // If there is new data from the magnetometer
     if (imu.magReady()) {
         mag = imu.readMag();
-
+        sdLog.logMagData(mag);
     }
 
-    
+    // Write one combined row using the latest available values.
+    // If a sensor didn't update this loop, its last known value is reused.
+    sdLog.writeCombinedRow();
 }
+
