@@ -1,107 +1,63 @@
 #include "imu.hpp"
-#include "Teensy-ICM-20948.h"
+#include <Adafruit_ICM20948.h>
+#include <SPI.h>
 
-// Internal ICM-20948 instance
-static TeensyICM20948 icm20948;
+static Adafruit_ICM20948 icm20948;
 
-IMU::IMU() : initialized_(false) {}
+IMU::IMU() : initialized_(false), latest_{} {}
 
 IMUConfig IMU::defaultConfig() {
     return IMUConfig{
-        .cs_pin = 24,
-        .spi_speed = 1000000,
-        .mode = 1,
-        .enable_gyroscope = true,
-        .enable_accelerometer = true,
-        .enable_magnetometer = true,
-        .enable_quaternion = true,
-        .gyroscope_frequency = 1,
-        .accelerometer_frequency = 1,
-        .magnetometer_frequency = 1,
-        .quaternion_frequency = 50
+        .cs_pin = 7,
+        .accel_range = ICM20948_ACCEL_RANGE_16_G,
+        .gyro_range = ICM20948_GYRO_RANGE_2000_DPS,
+        .mag_data_rate = AK09916_MAG_DATARATE_100_HZ
     };
 }
 
-void IMU::init(const IMUConfig& config) {
-    TeensyICM20948Settings settings = {
-        .cs_pin = config.cs_pin,
-        .spi_speed = config.spi_speed,
-        .mode = config.mode,
-        .enable_gyroscope = config.enable_gyroscope,
-        .enable_accelerometer = config.enable_accelerometer,
-        .enable_magnetometer = config.enable_magnetometer,
-        .enable_quaternion = config.enable_quaternion,
-        .gyroscope_frequency = config.gyroscope_frequency,
-        .accelerometer_frequency = config.accelerometer_frequency,
-        .magnetometer_frequency = config.magnetometer_frequency,
-        .quaternion_frequency = config.quaternion_frequency
-    };
+bool IMU::init(const IMUConfig& config) {
+    if (!icm20948.begin_SPI(config.cs_pin)) {
+        return false;
+    }
 
-    icm20948.init(settings);
+    icm20948.setAccelRange(static_cast<icm20948_accel_range_t>(config.accel_range));
+    icm20948.setGyroRange(static_cast<icm20948_gyro_range_t>(config.gyro_range));
+    icm20948.setMagDataRate(static_cast<ak09916_data_rate_t>(config.mag_data_rate));
+
     initialized_ = true;
+    return true;
 }
 
-void IMU::update() {
-    if (initialized_) {
-        icm20948.task();
+bool IMU::update() {
+    if (!initialized_) {
+        return false;
     }
-}
 
-bool IMU::gyroReady() const {
-    return initialized_ && icm20948.gyroDataIsReady();
-}
-
-bool IMU::accelReady() const {
-    return initialized_ && icm20948.accelDataIsReady();
-}
-
-bool IMU::magReady() const {
-    return initialized_ && icm20948.magDataIsReady();
-}
-
-bool IMU::quatReady() const {
-    return initialized_ && icm20948.quatDataIsReady();
-}
-
-Vec3 IMU::readGyro() {
-    Vec3 data = {0, 0, 0};
-    if (initialized_) {
-        icm20948.readGyroData(&data.x, &data.y, &data.z);
+    sensors_event_t accel, gyro, temp, mag;
+    if (!icm20948.getEvent(&accel, &gyro, &temp, &mag)) {
+        return false;
     }
-    return data;
+
+    latest_.accel = {accel.acceleration.x, accel.acceleration.y, accel.acceleration.z};
+    latest_.gyro = {gyro.gyro.x, gyro.gyro.y, gyro.gyro.z};
+    latest_.mag = {mag.magnetic.x, mag.magnetic.y, mag.magnetic.z};
+    latest_.temp = temp.temperature;
+
+    return true;
 }
 
-Vec3 IMU::readAccel() {
-    Vec3 data = {0, 0, 0};
-    if (initialized_) {
-        icm20948.readAccelData(&data.x, &data.y, &data.z);
-    }
-    return data;
+Vec3 IMU::readGyro() const {
+    return latest_.gyro;
 }
 
-Vec3 IMU::readMag() {
-    Vec3 data = {0, 0, 0};
-    if (initialized_) {
-        icm20948.readMagData(&data.x, &data.y, &data.z);
-    }
-    return data;
+Vec3 IMU::readAccel() const {
+    return latest_.accel;
 }
 
-Quaternion IMU::readQuat() {
-    Quaternion data = {0, 0, 0, 0};
-    if (initialized_) {
-        icm20948.readQuatData(&data.w, &data.x, &data.y, &data.z);
-    }
-    return data;
+Vec3 IMU::readMag() const {
+    return latest_.mag;
 }
 
-IMUData IMU::readAll() {
-    IMUData data = {};
-    if (initialized_) {
-        icm20948.readGyroData(&data.gyro.x, &data.gyro.y, &data.gyro.z);
-        icm20948.readAccelData(&data.accel.x, &data.accel.y, &data.accel.z);
-        icm20948.readMagData(&data.mag.x, &data.mag.y, &data.mag.z);
-        icm20948.readQuatData(&data.quat.w, &data.quat.x, &data.quat.y, &data.quat.z);
-    }
-    return data;
+IMUData IMU::readAll() const {
+    return latest_;
 }

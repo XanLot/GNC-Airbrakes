@@ -21,6 +21,9 @@ compile_commands.events.json
 !.vscode/settings.json
 !.vscode/c_cpp_properties.json
 
+# Python venv
+visualiser/venv/
+
 # Editor backups
 *~
 *.swp

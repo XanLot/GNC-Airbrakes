@@ -10,35 +10,20 @@ struct Vec3 {
     float z;
 };
 
-// Quaternion for orientation
-struct Quaternion {
-    float w;
-    float x;
-    float y;
-    float z;
-};
-
 // IMU configuration
 struct IMUConfig {
     uint8_t cs_pin;              // SPI chip select pin
-    uint32_t spi_speed;          // SPI clock speed in Hz (max 7MHz)
-    uint8_t mode;                // 0 = low power, 1 = high performance
-    bool enable_gyroscope;
-    bool enable_accelerometer;
-    bool enable_magnetometer;
-    bool enable_quaternion;
-    uint8_t gyroscope_frequency;     // 1-225 Hz
-    uint8_t accelerometer_frequency; // 1-225 Hz
-    uint8_t magnetometer_frequency;  // 1-70 Hz
-    uint8_t quaternion_frequency;    // 50-225 Hz
+    uint8_t accel_range;         // 0=2g, 1=4g, 2=8g, 3=16g
+    uint8_t gyro_range;          // 0=250, 1=500, 2=1000, 3=2000 dps
+    uint8_t mag_data_rate;       // AK09916 data rate enum (see Adafruit_ICM20948.h)
 };
 
 // Combined IMU data reading
 struct IMUData {
-    Vec3 gyro;       // degrees/second
-    Vec3 accel;      // g
+    Vec3 gyro;       // rad/s
+    Vec3 accel;      // m/s^2
     Vec3 mag;        // microtesla
-    Quaternion quat; // orientation
+    float temp;      // degrees C
 };
 
 class IMU {
@@ -49,28 +34,22 @@ public:
     static IMUConfig defaultConfig();
 
     // Initialize the IMU with given configuration
-    void init(const IMUConfig& config);
+    bool init(const IMUConfig& config);
 
-    // Must be called frequently in main loop to update sensor values
-    void update();
+    // Poll sensor for new data. Returns true if new data was read.
+    bool update();
 
-    // Check if new data is available
-    bool gyroReady() const;
-    bool accelReady() const;
-    bool magReady() const;
-    bool quatReady() const;
-
-    // Read individual sensor data
-    Vec3 readGyro();
-    Vec3 readAccel();
-    Vec3 readMag();
-    Quaternion readQuat();
+    // Read individual sensor data (from last update() call)
+    Vec3 readGyro() const;
+    Vec3 readAccel() const;
+    Vec3 readMag() const;
 
     // Read all sensor data at once
-    IMUData readAll();
+    IMUData readAll() const;
 
 private:
     bool initialized_;
+    IMUData latest_;
 };
 
 #endif // IMU_HPP

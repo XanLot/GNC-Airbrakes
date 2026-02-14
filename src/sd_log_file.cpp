@@ -1,117 +1,129 @@
 #include <SD.h>
+#include <cstdio>
+#include <cstring>
 #include "sd_log_file.hpp"
 
-// -----------------------------------------------------------------------------
-// Internal implementation struct (hidden from the header)
-// -----------------------------------------------------------------------------
+static constexpr size_t BUF_SIZE = 4096;
+
+static constexpr unsigned long FLUSH_INTERVAL_US = 1000000; // 1 second
+
 struct sd_log::Impl {
     File logFile;
     bool initialized = false;
-
-    // Store the most recent readings from each sensor
-    Vec3 lastMag;
-    Vec3 lastGyro;
-    Vec3 lastAccel;
-
-    // Flags to track whether each sensor has updated at least once
-    bool magReady = false;
-    bool gyroReady = false;
-    bool accelReady = false;
+    char buffer[BUF_SIZE];
+    size_t bufPos = 0;
+    unsigned long lastFlushUs = 0;
 };
 
-// -----------------------------------------------------------------------------
-// Constructor: allocate the Impl object
-// -----------------------------------------------------------------------------
 sd_log::sd_log() : pimpl(new Impl) {}
 
-// -----------------------------------------------------------------------------
-// init(): initialize SD card and open the CSV file
-// -----------------------------------------------------------------------------
-void sd_log::init() {
+bool sd_log::init() {
     if (!SD.begin(BUILTIN_SDCARD)) {
-        return;
+        return false;
     }
 
     char filename[32];
     int index = 0;
 
-    // Find the first filename of format imu_XXXX.csv that hasn't been claimed
     do {
-        snprintf(filename, sizeof(filename), "imu_%04d.csv", index++);
+        snprintf(filename, sizeof(filename), "log_%04d.csv", index++);
     } while (SD.exists(filename));
 
     pimpl->logFile = SD.open(filename, FILE_WRITE);
     if (!pimpl->logFile) {
-        return; // File could not be opened
+        return false;
     }
 
     pimpl->initialized = true;
+    pimpl->bufPos = 0;
 
-    pimpl->logFile.println(
+    const char header[] =
         "timestamp_us,"
-        "mag_x,mag_y,mag_z,"
+        "accel_x,accel_y,accel_z,"
         "gyro_x,gyro_y,gyro_z,"
-        "accel_x,accel_y,accel_z"
-    );
+        "mag_x,mag_y,mag_z,"
+        "temp_c,pressure_pa,altitude_m\n";
+
+    // Write header directly to SD so the file isn't empty if power is cut early
+    pimpl->logFile.write(header, strlen(header));
+    pimpl->logFile.flush();
+    pimpl->lastFlushUs = micros();
+
+    return true;
 }
 
-// -----------------------------------------------------------------------------
-// Store magnetometer data (does NOT write to SD yet)
-// -----------------------------------------------------------------------------
-void sd_log::logMagData(const Vec3& v) {
-    if (!pimpl->initialized) return;
-
-    pimpl->lastMag = v;
-    pimpl->magReady = true;
+// Append a float as text into buf at position pos. Returns new position.
+static size_t appendFloat(char* buf, size_t pos, size_t max, float val, uint8_t decimals) {
+    char tmp[16];
+    dtostrf(val, 0, decimals, tmp);
+    size_t tlen = strlen(tmp);
+    if (pos + tlen < max) {
+        memcpy(buf + pos, tmp, tlen);
+        pos += tlen;
+    }
+    return pos;
 }
 
-// -----------------------------------------------------------------------------
-// Store gyroscope data
-// -----------------------------------------------------------------------------
-void sd_log::logGyroData(const Vec3& v) {
+void sd_log::log(const IMUData& imu, const BarometerData& baro) {
     if (!pimpl->initialized) return;
 
-    pimpl->lastGyro = v;
-    pimpl->gyroReady = true;
-}
+    char row[256];
+    size_t p = 0;
 
-// -----------------------------------------------------------------------------
-// Store accelerometer data
-// -----------------------------------------------------------------------------
-void sd_log::logAccelData(const Vec3& v) {
-    if (!pimpl->initialized) return;
+    // Timestamp
+    p += snprintf(row + p, sizeof(row) - p, "%lu,", (unsigned long)micros());
 
-    pimpl->lastAccel = v;
-    pimpl->accelReady = true;
-}
+    // Accel x,y,z (4 decimals)
+    p = appendFloat(row, p, sizeof(row), imu.accel.x, 4); row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), imu.accel.y, 4); row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), imu.accel.z, 4); row[p++] = ',';
 
-// -----------------------------------------------------------------------------
-// Write a combined row using the *latest available* values.
-// Missing readings simply reuse the last known value.
-// -----------------------------------------------------------------------------
-void sd_log::writeCombinedRow() {
-    if (!pimpl->initialized) return;
+    // Gyro x,y,z (4 decimals)
+    p = appendFloat(row, p, sizeof(row), imu.gyro.x, 4); row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), imu.gyro.y, 4); row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), imu.gyro.z, 4); row[p++] = ',';
 
-    // Only block logging until each sensor has produced *at least one* reading.
-    if (!(pimpl->magReady && pimpl->gyroReady && pimpl->accelReady)) {
-        return;
+    // Mag x,y,z (2 decimals)
+    p = appendFloat(row, p, sizeof(row), imu.mag.x, 2); row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), imu.mag.y, 2); row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), imu.mag.z, 2); row[p++] = ',';
+
+    // Temp (2 decimals)
+    p = appendFloat(row, p, sizeof(row), imu.temp, 2); row[p++] = ',';
+
+    // Pressure (1 decimal), Altitude (2 decimals)
+    p = appendFloat(row, p, sizeof(row), baro.pressure, 1); row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), baro.altitude, 2);
+
+    row[p++] = '\n';
+
+    size_t rowLen = p;
+
+    // If appending would overflow, flush current buffer first
+    if (pimpl->bufPos + rowLen > BUF_SIZE) {
+        pimpl->logFile.write(pimpl->buffer, pimpl->bufPos);
+        pimpl->bufPos = 0;
     }
 
-    uint32_t t = micros(); // timestamp in microseconds
+    memcpy(pimpl->buffer + pimpl->bufPos, row, rowLen);
+    pimpl->bufPos += rowLen;
 
-    // Write one complete IMU snapshot
-    pimpl->logFile.printf(
-        "%lu,"
-        "%f,%f,%f,"      // mag
-        "%f,%f,%f,"      // gyro
-        "%f,%f,%f\n",    // accel
-        t,
-        pimpl->lastMag.x,   pimpl->lastMag.y,   pimpl->lastMag.z,
-        pimpl->lastGyro.x,  pimpl->lastGyro.y,  pimpl->lastGyro.z,
-        pimpl->lastAccel.x, pimpl->lastAccel.y, pimpl->lastAccel.z
-    );
+    // Periodic flush so data survives power loss
+    unsigned long now = micros();
+    if (now - pimpl->lastFlushUs >= FLUSH_INTERVAL_US) {
+        pimpl->logFile.write(pimpl->buffer, pimpl->bufPos);
+        pimpl->bufPos = 0;
+        pimpl->logFile.flush();
+        pimpl->lastFlushUs = now;
+    }
+}
 
-    // IMPORTANT:
-    // We do NOT reset the ready flags.
-    // This allows reuse of last known values if a sensor doesn't update next cycle.
+void sd_log::flush() {
+    if (!pimpl->initialized) return;
+
+    if (pimpl->bufPos > 0) {
+        pimpl->logFile.write(pimpl->buffer, pimpl->bufPos);
+        pimpl->bufPos = 0;
+    }
+    pimpl->logFile.flush();
 }

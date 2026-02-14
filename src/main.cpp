@@ -5,48 +5,59 @@
 
 #include <Arduino.h>
 #include "imu.hpp"
+#include "barometer.hpp"
 #include "sd_log_file.hpp"
 
 IMU imu;
+Barometer barometer;
 sd_log sdLog;
 
 void setup() {
     Serial.begin(115200);
     delay(500);
 
-    imu.init(IMU::defaultConfig());
+    if (!imu.init(IMU::defaultConfig())) {
+        Serial.println("ICM-20948 init failed!");
+    }
+
+    if (!barometer.init(Barometer::defaultConfig())) {
+        Serial.println("BMP388 init failed!");
+    }
+
+    if (!sdLog.init()) {
+        Serial.println("SD card init failed!");
+    }
 
     Serial.println("GNC-Airbrakes firmware initialized");
 }
 
 void loop() {
-    imu.update();
+    if (imu.update()) {
+        Vec3 gyro = imu.readGyro();
+        Serial.print("Gyro (rad/s): [");
+        Serial.print(gyro.x); Serial.print(",");
+        Serial.print(gyro.y); Serial.print(",");
+        Serial.print(gyro.z); Serial.println("]");
 
-    // Temporary storage for readings
-    Vec3 gyro;
-    Vec3 accel;
-    Vec3 mag;
+        Vec3 accel = imu.readAccel();
+        Serial.print("Accel (m/s^2): [");
+        Serial.print(accel.x); Serial.print(",");
+        Serial.print(accel.y); Serial.print(",");
+        Serial.print(accel.z); Serial.println("]");
 
-    // If there is new data from the gyro
-    if (imu.gyroReady()) {
-        gyro = imu.readGyro();
-        sdLog.logGyroData(gyro);
+        Vec3 mag = imu.readMag();
+        Serial.print("Mag (uT): [");
+        Serial.print(mag.x); Serial.print(",");
+        Serial.print(mag.y); Serial.print(",");
+        Serial.print(mag.z); Serial.println("]");
     }
 
-    // If there is new data from the accelerometer
-    if (imu.accelReady()) {
-        accel = imu.readAccel();
-        sdLog.logAccelData(accel);
+    if (barometer.update()) {
+        BarometerData data = barometer.readAll();
+        Serial.print("Temp (C): "); Serial.println(data.temperature);
+        Serial.print("Pressure (hPa): "); Serial.println(data.pressure / 100.0);
+        Serial.print("Altitude (m): "); Serial.println(data.altitude);
     }
 
-    // If there is new data from the magnetometer
-    if (imu.magReady()) {
-        mag = imu.readMag();
-        sdLog.logMagData(mag);
-    }
-
-    // Write one combined row using the latest available values.
-    // If a sensor didn't update this loop, its last known value is reused.
-    sdLog.writeCombinedRow();
+    sdLog.log(imu.readAll(), barometer.readAll());
 }
-
