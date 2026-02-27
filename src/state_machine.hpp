@@ -29,6 +29,7 @@ constexpr float BOOST_ACCEL_THRESHOLD_MS2   = 5.0f * 9.81f;  // 5g in m/s²
 constexpr float BURNOUT_ACCEL_THRESHOLD_MS2 = 0.5f * 9.81f;  // 0.5g — near-freefall after burnout (noise prevents exact 0)
 constexpr float COAST_TIMER_SECONDS         = 3.0f;          // seconds in COAST_ONSET before COAST
 constexpr int   PRE_LAUNCH_BUFFER_SIZE      = 100;           // ~1 second at 100 Hz IMU
+constexpr int   BURNOUT_CONFIRM_SAMPLES     = 3;             // consecutive low-g readings to confirm motor burnout
 constexpr int   APOGEE_CONFIRM_SAMPLES      = 5;             // consecutive decreasing altitude readings to confirm apogee
 
 // ─── Pre-launch sample ────────────────────────────────────────────────────────
@@ -58,6 +59,7 @@ private:
     unsigned long coastOnsetEntryMs_;
     float previousAltitude_;
     int   altitudeDecreasingCount_;
+    int   burnoutConfirmCount_;
 
     FlightState checkTransition_OnPad(const IMUData& imu);
     FlightState checkTransition_Boost(const IMUData& imu);

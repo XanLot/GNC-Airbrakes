@@ -10,7 +10,8 @@ StateMachine::StateMachine(sd_log& sdLog)
       bufferCount_(0),
       coastOnsetEntryMs_(0),
       previousAltitude_(0.0f),
-      altitudeDecreasingCount_(0)
+      altitudeDecreasingCount_(0),
+      burnoutConfirmCount_(0)
 {
     // Zero out the pre-launch circular buffer
     for (int i = 0; i < PRE_LAUNCH_BUFFER_SIZE; i++) {
@@ -84,7 +85,14 @@ FlightState StateMachine::checkTransition_OnPad(const IMUData& imu) {
 }
 
 FlightState StateMachine::checkTransition_Boost(const IMUData& imu) {
+    // Require multiple consecutive low-g readings to confirm burnout.
+    // A single vibration-damped sample during motor burn should not trigger early transition.
     if (accelMagnitude(imu) <= BURNOUT_ACCEL_THRESHOLD_MS2) {
+        burnoutConfirmCount_++;
+    } else {
+        burnoutConfirmCount_ = 0;
+    }
+    if (burnoutConfirmCount_ >= BURNOUT_CONFIRM_SAMPLES) {
         return FlightState::COAST_ONSET;
     }
     return FlightState::BOOST;
