@@ -8,10 +8,40 @@ IMU::IMU() : initialized_(false), latest_{} {}
 
 IMUConfig IMU::defaultConfig() {
     return IMUConfig{
-        .cs_pin = 7,
-        .accel_range = ICM20948_ACCEL_RANGE_16_G,
-        .gyro_range = ICM20948_GYRO_RANGE_2000_DPS,
-        .mag_data_rate = AK09916_MAG_DATARATE_100_HZ
+        .cs_pin               = 7,
+        .accel_range          = ICM20948_ACCEL_RANGE_16_G,
+        .gyro_range           = ICM20948_GYRO_RANGE_2000_DPS,
+        .mag_data_rate        = AK09916_MAG_DATARATE_100_HZ,
+        .accel_dlpf_cfg       = 0,
+        .gyro_dlpf_cfg        = 0,
+        .accel_sample_rate_div = 0,
+        .gyro_sample_rate_div  = 0
+    };
+}
+
+IMUConfig IMU::flightConfig() {
+    return IMUConfig{
+        .cs_pin               = 7,
+        .accel_range          = ICM20948_ACCEL_RANGE_8_G,
+        .gyro_range           = ICM20948_GYRO_RANGE_500_DPS,
+        .mag_data_rate        = AK09916_MAG_DATARATE_100_HZ,
+        .accel_dlpf_cfg       = 4,    // 23.9 Hz — filters motor vibration
+        .gyro_dlpf_cfg        = 4,    // 23.9 Hz — matches accel filter
+        .accel_sample_rate_div = 10,   // 1125 / 11 ≈ 102 Hz
+        .gyro_sample_rate_div  = 10    // 1100 / 11 = 100 Hz
+    };
+}
+
+IMUConfig IMU::lowNoiseConfig() {
+    return IMUConfig{
+        .cs_pin               = 7,
+        .accel_range          = ICM20948_ACCEL_RANGE_4_G,
+        .gyro_range           = ICM20948_GYRO_RANGE_250_DPS,
+        .mag_data_rate        = AK09916_MAG_DATARATE_100_HZ,
+        .accel_dlpf_cfg       = 5,    // 11.5 Hz — aggressive filtering
+        .gyro_dlpf_cfg        = 5,    // 11.5 Hz
+        .accel_sample_rate_div = 21,   // 1125 / 22 ≈ 51 Hz
+        .gyro_sample_rate_div  = 21    // 1100 / 22 = 50 Hz
     };
 }
 
@@ -23,6 +53,22 @@ bool IMU::init(const IMUConfig& config) {
     icm20948.setAccelRange(static_cast<icm20948_accel_range_t>(config.accel_range));
     icm20948.setGyroRange(static_cast<icm20948_gyro_range_t>(config.gyro_range));
     icm20948.setMagDataRate(static_cast<ak09916_data_rate_t>(config.mag_data_rate));
+
+    // Set sample rate divisors (controls ODR)
+    icm20948.setAccelRateDivisor(config.accel_sample_rate_div);
+    icm20948.setGyroRateDivisor(config.gyro_sample_rate_div);
+
+    // Set DLPF (digital low-pass filter) configuration
+    if (config.accel_dlpf_cfg > 0) {
+        icm20948.enableAccelDLPF(true, static_cast<icm20x_accel_cutoff_t>(config.accel_dlpf_cfg));
+    } else {
+        icm20948.enableAccelDLPF(false, ICM20X_ACCEL_FREQ_246_0_HZ);
+    }
+    if (config.gyro_dlpf_cfg > 0) {
+        icm20948.enableGyrolDLPF(true, static_cast<icm20x_gyro_cutoff_t>(config.gyro_dlpf_cfg));
+    } else {
+        icm20948.enableGyrolDLPF(false, ICM20X_GYRO_FREQ_196_6_HZ);
+    }
 
     initialized_ = true;
     return true;

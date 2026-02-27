@@ -12,10 +12,14 @@ struct Vec3 {
 
 // IMU configuration
 struct IMUConfig {
-    uint8_t cs_pin;              // SPI chip select pin
-    uint8_t accel_range;         // 0=2g, 1=4g, 2=8g, 3=16g
-    uint8_t gyro_range;          // 0=250, 1=500, 2=1000, 3=2000 dps
-    uint8_t mag_data_rate;       // AK09916 data rate enum (see Adafruit_ICM20948.h)
+    uint8_t  cs_pin;                // SPI chip select pin
+    uint8_t  accel_range;           // ICM20948_ACCEL_RANGE_2_G / _4 / _8 / _16
+    uint8_t  gyro_range;            // ICM20948_GYRO_RANGE_250_DPS / _500 / _1000 / _2000
+    uint8_t  mag_data_rate;         // AK09916_MAG_DATARATE_* enum value
+    uint8_t  accel_dlpf_cfg;        // 0-7: DLPF bandwidth. 4 = 23.9 Hz. 0 = 246 Hz (off).
+    uint8_t  gyro_dlpf_cfg;         // 0-7: same scale as accel_dlpf_cfg
+    uint16_t accel_sample_rate_div; // Accel ODR = 1125 / (1 + div). e.g. div=10 → 102 Hz
+    uint8_t  gyro_sample_rate_div;  // Gyro ODR  = 1100 / (1 + div). e.g. div=10 → 100 Hz
 };
 
 // Combined IMU data reading
@@ -32,6 +36,9 @@ public:
 
     // Returns a default configuration
     static IMUConfig defaultConfig();
+
+    static IMUConfig flightConfig();    // ±8g, 23.9 Hz LPF, 100 Hz ODR — use for actual flights
+    static IMUConfig lowNoiseConfig();  // ±4g, 11.5 Hz LPF, 50 Hz ODR  — use for ground testing
 
     // Initialize the IMU with given configuration
     bool init(const IMUConfig& config);
