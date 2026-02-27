@@ -9,7 +9,8 @@ StateMachine::StateMachine(sd_log& sdLog)
       bufferHead_(0),
       bufferCount_(0),
       coastOnsetEntryMs_(0),
-      previousAltitude_(0.0f)
+      previousAltitude_(0.0f),
+      altitudeDecreasingCount_(0)
 {
     // Zero out the pre-launch circular buffer
     for (int i = 0; i < PRE_LAUNCH_BUFFER_SIZE; i++) {
@@ -97,7 +98,14 @@ FlightState StateMachine::checkTransition_CoastOnset() {
 }
 
 FlightState StateMachine::checkTransition_Coast(const BarometerData& baro) {
+    // Require multiple consecutive decreasing readings to confirm apogee.
+    // A single noisy sample should not lock the airbrakes prematurely.
     if (baro.altitude < previousAltitude_) {
+        altitudeDecreasingCount_++;
+    } else {
+        altitudeDecreasingCount_ = 0;
+    }
+    if (altitudeDecreasingCount_ >= APOGEE_CONFIRM_SAMPLES) {
         return FlightState::RECOVERY;
     }
     return FlightState::COAST;

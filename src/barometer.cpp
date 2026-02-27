@@ -31,7 +31,7 @@ BarometerConfig Barometer::flightConfig() {
         .spi_speed                 = 1000000,
         .temperature_oversampling  = 1,      // BMP3_OVERSAMPLING_2X
         .pressure_oversampling     = 3,      // BMP3_OVERSAMPLING_8X
-        .iir_filter_coeff          = 4,      // BMP3_IIR_FILTER_COEFF_15
+        .iir_filter_coeff          = 5,      // BMP3_IIR_FILTER_COEFF_31 — smooths turbulence over ~32 samples
         .output_data_rate          = 2,      // BMP3_ODR_50_HZ
         .sea_level_pressure_hpa    = 1013.25f,
         .power_mode                = 1       // normal mode

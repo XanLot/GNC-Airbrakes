@@ -26,9 +26,10 @@ enum class AirbrakeStatus {
 // ─── Configurable transition thresholds ──────────────────────────────────────
 // Change these to tune when state transitions fire.
 constexpr float BOOST_ACCEL_THRESHOLD_MS2   = 5.0f * 9.81f;  // 5g in m/s²
-constexpr float BURNOUT_ACCEL_THRESHOLD_MS2 = 0.0f;          // net accel <= 0
+constexpr float BURNOUT_ACCEL_THRESHOLD_MS2 = 0.5f * 9.81f;  // 0.5g — near-freefall after burnout (noise prevents exact 0)
 constexpr float COAST_TIMER_SECONDS         = 3.0f;          // seconds in COAST_ONSET before COAST
 constexpr int   PRE_LAUNCH_BUFFER_SIZE      = 100;           // ~1 second at 100 Hz IMU
+constexpr int   APOGEE_CONFIRM_SAMPLES      = 5;             // consecutive decreasing altitude readings to confirm apogee
 
 // ─── Pre-launch sample ────────────────────────────────────────────────────────
 // One snapshot stored in the circular buffer during ON_PAD.
@@ -56,6 +57,7 @@ private:
 
     unsigned long coastOnsetEntryMs_;
     float previousAltitude_;
+    int   altitudeDecreasingCount_;
 
     FlightState checkTransition_OnPad(const IMUData& imu);
     FlightState checkTransition_Boost(const IMUData& imu);
