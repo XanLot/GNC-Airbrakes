@@ -1,26 +1,36 @@
 /**
  * GNC-Airbrakes Firmware
  * Teensy 4.1 Entry Point
+ *
+ * Preset selection — change these two lines to switch sensor configs:
+ *   IMU::flightConfig()     — ±8g, 23.9 Hz LPF, 100 Hz ODR (use for actual flights)
+ *   IMU::lowNoiseConfig()   — ±4g, 11.5 Hz LPF, 50 Hz ODR  (use for ground testing)
+ *   Barometer::flightConfig()   — 8x OSR, IIR 15, 50 Hz, normal mode
+ *   Barometer::highRateConfig() — 4x OSR, IIR 3, 200 Hz, normal mode
  */
 
 #include <Arduino.h>
 #include "imu.hpp"
 #include "barometer.hpp"
 #include "sd_log_file.hpp"
+#include "state_machine.hpp"
 
-IMU imu;
-Barometer barometer;
-sd_log sdLog;
+IMU          imu;
+Barometer    barometer;
+sd_log       sdLog;
+StateMachine stateMachine(sdLog);
 
 void setup() {
     Serial.begin(115200);
     delay(500);
 
-    if (!imu.init(IMU::defaultConfig())) {
+    // ── Sensor init ─────────────────────────────────────────────────────────
+    // Change the preset here to switch sensor configurations.
+    if (!imu.init(IMU::flightConfig())) {
         Serial.println("ICM-20948 init failed!");
     }
 
-    if (!barometer.init(Barometer::defaultConfig())) {
+    if (!barometer.init(Barometer::flightConfig())) {
         Serial.println("BMP388 init failed!");
     }
 
@@ -29,35 +39,22 @@ void setup() {
     }
 
     Serial.println("GNC-Airbrakes firmware initialized");
+    Serial.println("[STATE] Starting in ON_PAD — buffering pre-launch samples.");
 }
 
 void loop() {
-    if (imu.update()) {
-        Vec3 gyro = imu.readGyro();
-        Serial.print("Gyro (rad/s): [");
-        Serial.print(gyro.x); Serial.print(",");
-        Serial.print(gyro.y); Serial.print(",");
-        Serial.print(gyro.z); Serial.println("]");
+    // ── Read sensors ────────────────────────────────────────────────────────
+    bool imuReady  = imu.update();
+    bool baroReady = barometer.update();
 
-        Vec3 accel = imu.readAccel();
-        Serial.print("Accel (m/s^2): [");
-        Serial.print(accel.x); Serial.print(",");
-        Serial.print(accel.y); Serial.print(",");
-        Serial.print(accel.z); Serial.println("]");
+    // ── Update state machine ────────────────────────────────────────────────
+    // Always update with latest data even if sensors had no new reading this tick.
+    stateMachine.update(imu.readAll(), barometer.readAll());
 
-        Vec3 mag = imu.readMag();
-        Serial.print("Mag (uT): [");
-        Serial.print(mag.x); Serial.print(",");
-        Serial.print(mag.y); Serial.print(",");
-        Serial.print(mag.z); Serial.println("]");
+    // ── SD logging ──────────────────────────────────────────────────────────
+    // Only log during flight states (BOOST through RECOVERY).
+    // ON_PAD data is buffered in RAM and flushed to SD when launch is detected.
+    if (stateMachine.isLogging() && (imuReady || baroReady)) {
+        sdLog.log(imu.readAll(), barometer.readAll());
     }
-
-    if (barometer.update()) {
-        BarometerData data = barometer.readAll();
-        Serial.print("Temp (C): "); Serial.println(data.temperature);
-        Serial.print("Pressure (hPa): "); Serial.println(data.pressure / 100.0);
-        Serial.print("Altitude (m): "); Serial.println(data.altitude);
-    }
-
-    sdLog.log(imu.readAll(), barometer.readAll());
 }
