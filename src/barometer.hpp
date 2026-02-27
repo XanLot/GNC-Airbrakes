@@ -12,6 +12,7 @@ struct BarometerConfig {
     uint8_t iir_filter_coeff;          // 0=off, 1=1, 2=3, 3=7, 4=15, 5=31, 6=63, 7=127
     uint8_t output_data_rate;          // 0=200Hz .. 0x11=0.001Hz
     float sea_level_pressure_hpa;      // sea level pressure in hPa for altitude calc
+    uint8_t  power_mode;  // 0 = forced (blocking), 1 = normal (continuous background sampling)
 };
 
 // Combined barometer data reading
@@ -27,6 +28,12 @@ public:
 
     // Returns a default configuration
     static BarometerConfig defaultConfig();
+
+    // Preset: 8x OSR, IIR 15, 50 Hz, normal mode
+    static BarometerConfig flightConfig();
+
+    // Preset: 4x OSR, IIR 3, 200 Hz, normal mode
+    static BarometerConfig highRateConfig();
 
     // Initialize the barometer with given configuration.
     // Returns true on success.
@@ -52,6 +59,7 @@ private:
     float sea_level_pressure_hpa_;
     float temperature_;
     float pressure_;
+    uint8_t power_mode_;
 };
 
 #endif // BAROMETER_HPP
