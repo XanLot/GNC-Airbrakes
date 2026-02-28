@@ -20,15 +20,20 @@ IMUConfig IMU::defaultConfig() {
 }
 
 IMUConfig IMU::flightConfig() {
+    // Tuned for state estimation on a ~2.2 kg rocket (H/I class motor).
+    // 225 Hz ODR gives the Kalman filter ~4-5 IMU updates per barometer reading,
+    // which tightens velocity integration during the 5-10s coast phase.
+    // ±8g fits 6.3g peak with margin. DLPF at 23.9 Hz kills motor vibration
+    // while keeping group delay at ~21ms — fast enough for airbrake control.
     return IMUConfig{
         .cs_pin               = 7,
-        .accel_range          = ICM20948_ACCEL_RANGE_8_G,
-        .gyro_range           = ICM20948_GYRO_RANGE_500_DPS,
+        .accel_range          = ICM20948_ACCEL_RANGE_8_G,   // 6.3g peak fits, 2x less noise than ±16g
+        .gyro_range           = ICM20948_GYRO_RANGE_500_DPS, // small rocket won't spin fast
         .mag_data_rate        = AK09916_MAG_DATARATE_100_HZ,
-        .accel_dlpf_cfg       = 4,    // 23.9 Hz — filters motor vibration
+        .accel_dlpf_cfg       = 4,    // 23.9 Hz — filters motor vibration, ~21ms group delay
         .gyro_dlpf_cfg        = 4,    // 23.9 Hz — matches accel filter
-        .accel_sample_rate_div = 10,   // 1125 / 11 ≈ 102 Hz
-        .gyro_sample_rate_div  = 10    // 1100 / 11 = 100 Hz
+        .accel_sample_rate_div = 4,    // 1125 / 5 = 225 Hz — fast updates for state estimator
+        .gyro_sample_rate_div  = 4     // 1100 / 5 = 220 Hz
     };
 }
 
