@@ -43,6 +43,10 @@ public:
     // Initialize the IMU with given configuration
     bool init(const IMUConfig& config);
 
+    // Change sensor settings at runtime (skips SPI init).
+    // Call this to swap presets mid-flight, e.g. lowNoiseConfig() on pad → flightConfig() at boost.
+    bool reconfigure(const IMUConfig& config);
+
     // Poll sensor for new data. Returns true if new data was read.
     bool update();
 
@@ -55,6 +59,7 @@ public:
     IMUData readAll() const;
 
 private:
+    void applyConfig(const IMUConfig& config);
     bool initialized_;
     IMUData latest_;
 };

@@ -49,7 +49,20 @@ bool IMU::init(const IMUConfig& config) {
     if (!icm20948.begin_SPI(config.cs_pin)) {
         return false;
     }
+    applyConfig(config);
+    initialized_ = true;
+    return true;
+}
 
+bool IMU::reconfigure(const IMUConfig& config) {
+    if (!initialized_) {
+        return false;
+    }
+    applyConfig(config);
+    return true;
+}
+
+void IMU::applyConfig(const IMUConfig& config) {
     icm20948.setAccelRange(static_cast<icm20948_accel_range_t>(config.accel_range));
     icm20948.setGyroRange(static_cast<icm20948_gyro_range_t>(config.gyro_range));
     icm20948.setMagDataRate(static_cast<ak09916_data_rate_t>(config.mag_data_rate));
@@ -69,9 +82,6 @@ bool IMU::init(const IMUConfig& config) {
     } else {
         icm20948.enableGyrolDLPF(false, ICM20X_GYRO_FREQ_196_6_HZ);
     }
-
-    initialized_ = true;
-    return true;
 }
 
 bool IMU::update() {
