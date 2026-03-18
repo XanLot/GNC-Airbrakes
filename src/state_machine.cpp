@@ -149,12 +149,18 @@ void StateMachine::onEnter_Recovery() {
 
 // ─── Airbrake status stub ───────────────────────────────────────────────────
 void StateMachine::setAirbrakeStatus(AirbrakeStatus status) {
+    currentAirbrakeStatus_ = status;
+
     Serial.print("[AIRBRAKE] Status set to: ");
     switch (status) {
         case AirbrakeStatus::LOCKED:      Serial.println("LOCKED");      break;
         case AirbrakeStatus::PERMITTED:   Serial.println("PERMITTED");   break;
         case AirbrakeStatus::ACTIVE_CONT: Serial.println("ACTIVE_CONT"); break;
     }
+}
+
+AirbrakeStatus StateMachine::getAirbrakeStatus() const {
+    return currentAirbrakeStatus_;
 }
 
 // ─── Acceleration magnitude ─────────────────────────────────────────────────

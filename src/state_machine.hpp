@@ -45,12 +45,14 @@ public:
     explicit StateMachine(sd_log& sdLog);
 
     void update(const IMUData& imu, const BarometerData& baro);
+    AirbrakeStatus getAirbrakeStatus() const;
     FlightState getState() const;
     bool isLogging() const;
 
 private:
     FlightState currentState_;
     sd_log&     sdLog_;
+    AirbrakeStatus currentAirbrakeStatus_;
 
     PreLaunchSample preLaunchBuffer_[PRE_LAUNCH_BUFFER_SIZE];
     int             bufferHead_;
