@@ -12,23 +12,24 @@ void AirbrakeMotor::begin() {
 }
 
 void AirbrakeMotor::update(AirbrakeStatus status) {
+    static bool justWoke = false;
+
     switch (status) {
 
         case AirbrakeStatus::LOCKED:
-            // Hold position (do NOT sleep unless mechanically locked)
-            digitalWrite(slpPin_, HIGH);
-            break;
-
         case AirbrakeStatus::PERMITTED:
-            // Ready but not moving
-            digitalWrite(slpPin_, HIGH);
+            digitalWrite(slpPin_, LOW);
+            justWoke = false;
             break;
 
         case AirbrakeStatus::ACTIVE_CONT:
-            digitalWrite(slpPin_, HIGH);
+            if (!justWoke) {
+                digitalWrite(slpPin_, HIGH);
+                delayMicroseconds(1500); // wake time
+                justWoke = true;
+            }
 
-            // Placeholder behavior (until control team finishes)
-            digitalWrite(dirPin_, HIGH);  // always extend for now
+            digitalWrite(dirPin_, HIGH);
             stepOnce();
             break;
     }

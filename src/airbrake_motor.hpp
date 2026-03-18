@@ -1,11 +1,6 @@
 #pragma once
 #include <Arduino.h>
-
-enum class AirbrakeStatus {
-    LOCKED,
-    PERMITTED,
-    ACTIVE_CONT
-};
+#include "state_machine.hpp"
 
 class AirbrakeMotor {
 public:

@@ -20,81 +20,77 @@ IMU          imu;
 Barometer    barometer;
 sd_log       sdLog;
 StateMachine stateMachine(sdLog);
-// AirbrakeMotor motor(3, 4, 5); // stepPin, dirPin, slpPin
+AirbrakeMotor airbrakeMotor(3, 4, 5); //slpPin, stepPin, dirPin
 
-// const int slpPin = 3;
-// const int dirPin = 4;
-
-// void setup() {
-//     Serial.begin(115200);
-//     delay(500);
-
-//     // ── Sensor init ─────────────────────────────────────────────────────────
-//     // Change the preset here to switch sensor configurations.
-//     if (!imu.init(IMU::flightConfig())) {
-//         Serial.println("ICM-20948 init failed!");
-//     }
-
-//     if (!barometer.init(Barometer::flightConfig())) {
-//         Serial.println("BMP388 init failed!");
-//     }
-
-//     if (!sdLog.init()) {
-//         Serial.println("SD card init failed!");
-//     }
-
-//     motor.begin();
-//     Serial.println("GNC-Airbrakes firmware initialized");
-//     Serial.println("[STATE] Starting in ON_PAD — buffering pre-launch samples.");
-// }
-
-// void loop() {
-//     // ── Read sensors ────────────────────────────────────────────────────────
-//     bool imuReady  = imu.update();
-//     bool baroReady = barometer.update();
-
-//     // ── Update state machine ────────────────────────────────────────────────
-//     // Always update with latest data even if sensors had no new reading this tick.
-//     stateMachine.update(imu.readAll(), barometer.readAll());
-
-//     motor.update(stateMachine.getAirbrakeStatus());
-
-//     // ── SD logging ──────────────────────────────────────────────────────────
-//     // Only log during flight states (BOOST through RECOVERY).
-//     // ON_PAD data is buffered in RAM and flushed to SD when launch is detected.
-//     if (stateMachine.isLogging() && (imuReady || baroReady)) {
-//         sdLog.log(imu.readAll(), barometer.readAll());
-//     }
-// }
-
-
-// defines pins numbers
-const int stepPin = 3; 
-const int dirPin = 4; 
- 
 void setup() {
-  // Sets the two pins as Outputs
-  pinMode(stepPin,OUTPUT); 
-  pinMode(dirPin,OUTPUT);
+    Serial.begin(115200);
+    airbrakeMotor.begin();
+    delay(500);
+
+    // ── Sensor init ─────────────────────────────────────────────────────────
+    // Change the preset here to switch sensor configurations.
+    if (!imu.init(IMU::flightConfig())) {
+        Serial.println("ICM-20948 init failed!");
+    }
+
+    if (!barometer.init(Barometer::flightConfig())) {
+        Serial.println("BMP388 init failed!");
+    }
+
+    if (!sdLog.init()) {
+        Serial.println("SD card init failed!");
+    }
+
+    Serial.println("GNC-Airbrakes firmware initialized");
+    Serial.println("[STATE] Starting in ON_PAD — buffering pre-launch samples.");
 }
+
 void loop() {
-  digitalWrite(dirPin,HIGH); // Enables the motor to move in a particular direction
-  // Makes 200 pulses for making one full cycle rotation
-  for(int x = 0; x < 200; x++) {
-    digitalWrite(stepPin,HIGH); 
-    delayMicroseconds(500); 
-    digitalWrite(stepPin,LOW); 
-    delayMicroseconds(500); 
-  }
-  delay(1000); // One second delay
-  
-  digitalWrite(dirPin,LOW); //Changes the rotations direction
-  // Makes 400 pulses for making two full cycle rotation
-  for(int x = 0; x < 400; x++) {
-    digitalWrite(stepPin,HIGH);
-    delayMicroseconds(500);
-    digitalWrite(stepPin,LOW);
-    delayMicroseconds(500);
-  }
-  delay(1000);
+    // ── Read sensors ────────────────────────────────────────────────────────
+    bool imuReady  = imu.update();
+    bool baroReady = barometer.update();
+
+    // ── Update state machine ────────────────────────────────────────────────
+    // Always update with latest data even if sensors had no new reading this tick.
+    stateMachine.update(imu.readAll(), barometer.readAll());
+    airbrakeMotor.update(stateMachine.getAirbrakeStatus());
+
+    // ── SD logging ──────────────────────────────────────────────────────────
+    // Only log during flight states (BOOST through RECOVERY).
+    // ON_PAD data is buffered in RAM and flushed to SD when launch is detected.
+    if (stateMachine.isLogging() && (imuReady || baroReady)) {
+        sdLog.log(imu.readAll(), barometer.readAll());
+    }
 }
+
+// TEST CODE FOR STEPPER MOTOR CONTROL — IGNORE
+// // defines pins numbers
+// const int stepPin = 3; 
+// const int dirPin = 4; 
+ 
+// void setup() {
+//   // Sets the two pins as Outputs
+//   pinMode(stepPin,OUTPUT); 
+//   pinMode(dirPin,OUTPUT);
+// }
+// void loop() {
+//   digitalWrite(dirPin,HIGH); // Enables the motor to move in a particular direction
+//   // Makes 200 pulses for making one full cycle rotation
+//   for(int x = 0; x < 200; x++) {
+//     digitalWrite(stepPin,HIGH); 
+//     delayMicroseconds(500); 
+//     digitalWrite(stepPin,LOW); 
+//     delayMicroseconds(500); 
+//   }
+//   delay(1000); // One second delay
+  
+//   digitalWrite(dirPin,LOW); //Changes the rotations direction
+//   // Makes 400 pulses for making two full cycle rotation
+//   for(int x = 0; x < 400; x++) {
+//     digitalWrite(stepPin,HIGH);
+//     delayMicroseconds(500);
+//     digitalWrite(stepPin,LOW);
+//     delayMicroseconds(500);
+//   }
+//   delay(1000);
+// }
