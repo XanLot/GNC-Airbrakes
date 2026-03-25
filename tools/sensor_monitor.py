@@ -38,13 +38,19 @@ buffers = {
 }
 
 
+_parse_count = 0
+
 def parse_line(line):
+    global _parse_count
     if not line.startswith('$') or line.startswith('$TICK'):
         return
     parts = line.split(',')
     tag = parts[0]
     if tag not in buffers:
         return
+    _parse_count += 1
+    if _parse_count % 100 == 0:
+        print(f"[monitor] {_parse_count} frames parsed, last: {line[:60]}")
     try:
         vals = [float(v) if v not in ('', 'nan') else float('nan') for v in parts[1:]]
     except ValueError:
@@ -80,7 +86,6 @@ def main():
     for i, tag in enumerate(['$IMU1', '$IMU2', '$IMU3', '$IMU4']):
         ax = axes[0][i]
         ax.set_title(f'{tag[1:]} Accel (m/s^2)')
-        ax.set_ylim(-100, 100)
         lx, = ax.plot([], [], 'r-', lw=0.8, label='X')
         ly, = ax.plot([], [], 'g-', lw=0.8, label='Y')
         lz, = ax.plot([], [], 'b-', lw=0.8, label='Z')
@@ -92,7 +97,6 @@ def main():
     for i, tag in enumerate(['$IMU1', '$IMU2', '$IMU3', '$IMU4']):
         ax = axes[1][i]
         ax.set_title(f'{tag[1:]} Gyro (rad/s)')
-        ax.set_ylim(-10, 10)
         lx, = ax.plot([], [], 'r-', lw=0.8, label='X')
         ly, = ax.plot([], [], 'g-', lw=0.8, label='Y')
         lz, = ax.plot([], [], 'b-', lw=0.8, label='Z')
@@ -102,23 +106,19 @@ def main():
     # row 2: baro1 alt, baro2 alt, mag, tmp
     baro1_line, = axes[2][0].plot([], [], 'b-', lw=1)
     axes[2][0].set_title('Baro1 Alt (m)')
-    axes[2][0].set_ylim(-10, 500)
 
     baro2_line, = axes[2][1].plot([], [], 'b-', lw=1)
     axes[2][1].set_title('Baro2 Alt (m)')
-    axes[2][1].set_ylim(-10, 500)
 
     mag_lx, = axes[2][2].plot([], [], 'r-', lw=0.8, label='X')
     mag_ly, = axes[2][2].plot([], [], 'g-', lw=0.8, label='Y')
     mag_lz, = axes[2][2].plot([], [], 'b-', lw=0.8, label='Z')
     axes[2][2].set_title('Mag (Gauss)')
-    axes[2][2].set_ylim(-8, 8)
     axes[2][2].legend(loc='upper right', fontsize=7)
 
     tmp1_line, = axes[2][3].plot([], [], 'r-', lw=0.8, label='TMP1')
     tmp2_line, = axes[2][3].plot([], [], 'b-', lw=0.8, label='TMP2')
     axes[2][3].set_title('TMP117 (C)')
-    axes[2][3].set_ylim(0, 50)
     axes[2][3].legend(loc='upper right', fontsize=7)
 
     def animate(_frame):
@@ -172,6 +172,7 @@ def main():
             for ax in row:
                 ax.set_xlim(0, WINDOW)
                 ax.relim()
+                ax.autoscale_view(scalex=False, scaley=True)
 
         return artists
 

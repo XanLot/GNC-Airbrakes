@@ -142,6 +142,7 @@ void setup() {
     Serial.println("\n========== GNC SENSOR DIAGNOSTIC ==========");
 
     SPI.begin();
+    SPI1.setMISO(39);  // PCB routes SPI1 MISO to pin 39, not the default pin 1
     SPI1.begin();
     Wire.begin();
     Wire.setClock(400000);
