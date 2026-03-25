@@ -49,22 +49,24 @@ These get cloned into `libraries/` alongside the existing ones.
 
 ## Data Structures
 
-### New structs (in `src/sensor_data.hpp`)
+These are the default structs. The old ICM-20948/BMP388 structs are gone.
+
+### Structs (in `src/sensor_data.hpp`)
 
 ```cpp
 struct Vec3 {
     float x, y, z;
 };
 
-// one LSM6DSVTR reading
-struct IMU6Data {
+// one LSM6DSVTR reading (accel + gyro, no mag since that's a separate chip now)
+struct IMUData {
     Vec3 accel;    // m/s^2
     Vec3 gyro;     // rad/s
-    float temp;    // degrees C (from LSM6DSV on-die temp)
+    float temp;    // degrees C (LSM6DSV on-die temp)
 };
 
 // one BMP581 reading
-struct BaroData {
+struct BarometerData {
     float temperature;  // degrees C
     float pressure;     // Pa
     float altitude;     // m
@@ -72,86 +74,114 @@ struct BaroData {
 
 // one MMC5983MA reading
 struct MagData {
-    Vec3 mag;  // microtesla (or Gauss, depending on lib output)
+    Vec3 field;  // Gauss (+/-8G range, 18-bit resolution)
 };
 
 // one TMP117 reading
 struct TempData {
-    float temperature;  // degrees C
+    float temperature;  // degrees C (0.0078 C resolution)
 };
 
 // everything in one tick
-struct AllSensorData {
-    IMU6Data imu[4];
-    BaroData baro[2];
-    MagData  mag;
-    TempData tmp;
-    unsigned long timestamp_us;
+struct SensorData {
+    IMUData        imu[4];
+    BarometerData  baro[2];
+    MagData        mag;
+    TempData       tmp;
+    unsigned long  timestamp_us;
 };
 ```
 
-The old `IMUData` and `BarometerData` structs are replaced by these. The state machine and SD logger are updated to use `AllSensorData`.
-
-### Why rename IMUData to IMU6Data
-The LSM6DSVTR is a 6-axis sensor (accel + gyro). The old `IMUData` included magnetometer data from the ICM-20948's built-in AK09916. With the new PCB, magnetometer data comes from the separate MMC5983MA, so it makes sense to split the structs.
+Note: `IMUData` no longer has a `mag` field since the LSM6DSVTR has no built-in magnetometer. Magnetometer data comes from the separate MMC5983MA via `MagData`.
 
 ## Sensor Drivers
 
-### LSM6DSVTR driver (`src/lsm6dsv.hpp` / `src/lsm6dsv.cpp`)
+### LSM6DSVTR driver (`src/imu.hpp` / `src/imu.cpp`)
 
 ```cpp
-struct LSM6DSVConfig {
+struct IMUConfig {
     uint8_t cs_pin;
-    SPIClass* spi_bus;       // &SPI or &SPI1
-    uint32_t spi_speed;      // Hz, max 10 MHz per datasheet
-    uint8_t accel_range;     // LSM6DSV_ACCEL_RANGE_*
-    uint8_t gyro_range;      // LSM6DSV_GYRO_RANGE_*
-    uint16_t accel_odr;      // LSM6DSV_RATE_*
-    uint16_t gyro_odr;
+    SPIClass* spi_bus;         // &SPI or &SPI1
+    uint32_t spi_speed;        // Hz, max 10 MHz per datasheet
+    uint8_t accel_range;       // LSM6DS_ACCEL_RANGE_*
+    uint8_t gyro_range;        // LSM6DS_GYRO_RANGE_*
+    uint16_t accel_odr;        // LSM6DS_RATE_*
+    uint16_t gyro_odr;         // LSM6DS_RATE_*
+    uint8_t accel_lpf2_bw;     // LPF2 bandwidth: 0=ODR/4 .. 7=ODR/800
+    bool    accel_lpf2_enable; // enable second-stage accel low-pass
+    uint8_t gyro_lpf1_bw;      // gyro LPF1 bandwidth setting
+    bool    gyro_lpf1_enable;
 };
 
-class LSM6DSV {
+class IMU {
 public:
-    bool init(const LSM6DSVConfig& config);
+    bool init(const IMUConfig& config);
     bool update();
-    IMU6Data readAll() const;
+    IMUData readAll() const;
 
-    static LSM6DSVConfig flightConfig(uint8_t cs_pin, SPIClass* bus);
-    static LSM6DSVConfig debugConfig(uint8_t cs_pin, SPIClass* bus);
+    static IMUConfig flightConfig(uint8_t cs_pin, SPIClass* bus);
+    static IMUConfig debugConfig(uint8_t cs_pin, SPIClass* bus);
 private:
+    void applyConfig(const IMUConfig& config);
     // Adafruit_LSM6DSV instance, config, latest data
 };
 ```
 
 Four instances created in main, one per IMU, each with its own CS pin and SPI bus pointer.
 
-### BMP581 driver (`src/bmp581.hpp` / `src/bmp581.cpp`)
+#### flightConfig preset (from LSM6DSV datasheet)
+- **Accel range:** +/-8g (6.3g peak fits with margin, 0.244 mg/LSB resolution)
+- **Gyro range:** +/-500 dps (small rocket won't spin faster)
+- **ODR:** 240 Hz (register 0x07, high-performance mode). Closest Adafruit enum is `LSM6DS_RATE_208_HZ`, may need direct register write for exact 240 Hz.
+- **Accel LPF2:** Enabled, LIGHT (ODR/20 = 12 Hz cutoff at 240 Hz). Filters motor vibration while keeping group delay reasonable for airbrake control.
+- **Gyro LPF1:** Enabled, setting 101 (53 Hz cutoff at 240 Hz). Rejects vibration, preserves attitude dynamics.
+- **SPI speed:** 8 MHz
+- **Power mode:** High-performance (lowest noise)
+
+#### debugConfig preset
+Same as flight but 60 Hz ODR and more aggressive filtering for cleaner bench readings.
+
+### BMP581 driver (`src/barometer.hpp` / `src/barometer.cpp`)
 
 ```cpp
-struct BMP581Config {
+struct BarometerConfig {
     uint8_t cs_pin;
     SPIClass* spi_bus;
-    uint32_t spi_speed;      // Hz, max 10 MHz per datasheet
-    uint8_t pressure_osr;
-    uint8_t temp_osr;
-    uint8_t odr;
-    uint8_t iir_coeff;
+    uint32_t spi_speed;        // Hz, max 10 MHz per datasheet
+    uint8_t pressure_osr;      // BMP5_OVERSAMPLING_*
+    uint8_t temp_osr;          // BMP5_OVERSAMPLING_*
+    uint8_t odr;               // BMP5_ODR_*
+    uint8_t iir_pressure;      // BMP5_IIR_FILTER_COEFF_*
+    uint8_t iir_temp;          // BMP5_IIR_FILTER_COEFF_* (usually bypass)
+    uint8_t power_mode;        // BMP5_POWERMODE_*
     float sea_level_hpa;
 };
 
-class BMP581Sensor {
+class Barometer {
 public:
-    bool init(const BMP581Config& config);
+    bool init(const BarometerConfig& config);
     bool update();
-    BaroData readAll() const;
+    BarometerData readAll() const;
 
-    static BMP581Config flightConfig(uint8_t cs_pin, SPIClass* bus);
+    static BarometerConfig flightConfig(uint8_t cs_pin, SPIClass* bus);
+    static BarometerConfig debugConfig(uint8_t cs_pin, SPIClass* bus);
+
+    void setSeaLevelPressure(float hpa);
 private:
     // SparkFun_BMP581 instance, config, latest data
 };
 ```
 
-### MMC5983MA driver (`src/mmc5983.hpp` / `src/mmc5983.cpp`)
+#### flightConfig preset (from BMP581 datasheet)
+- **Power mode:** Normal (continuous at configured ODR, predictable timing for Kalman filter)
+- **ODR:** 50 Hz. Gives 4.8:1 ratio with 240 Hz IMU, good for sensor fusion.
+- **Pressure OSR:** 8x (0.30 Pa noise, ~2.5 cm altitude resolution at sea level). Max normal-mode ODR at 8x is 140 Hz, so 50 Hz is well within limits.
+- **Temp OSR:** 1x (temperature only needed for pressure compensation)
+- **IIR pressure:** Coeff 7 (normalized BW 0.0212, ~1.06 Hz cutoff at 50 Hz). Smooths wind/vibration without being too sluggish for airbrake response.
+- **IIR temp:** Bypass (temperature changes slowly)
+- **SPI speed:** 8 MHz
+
+### MMC5983MA driver (`src/magnetometer.hpp` / `src/magnetometer.cpp`)
 
 ```cpp
 class Magnetometer {
@@ -164,9 +194,13 @@ private:
 };
 ```
 
-Sends SET pulse on init per datasheet requirement.
+#### Init config (from MMC5983MA datasheet)
+- **Mode:** Continuous at 50 Hz (matches baro rate for unified slow-sensor fusion step)
+- **Filter bandwidth:** 200 Hz (4 ms measurement time, low noise while fast enough for 50 Hz continuous)
+- **SET/RESET:** Auto SET/RESET enabled. Critical because the rocket motor's magnetic field will saturate the AMR elements during boost. Auto SET/RESET degausses every measurement, ensuring clean data during coast.
+- **Output:** 18-bit, +/-8 Gauss range, 16384 LSB/Gauss
 
-### TMP117 driver (`src/tmp117.hpp` / `src/tmp117.cpp`)
+### TMP117 driver (`src/temp_sensor.hpp` / `src/temp_sensor.cpp`)
 
 ```cpp
 class TempSensor {
@@ -178,6 +212,12 @@ private:
     // SparkFun_TMP117 instance, latest data
 };
 ```
+
+#### Init config (from TMP117 datasheet)
+- **Mode:** Continuous conversion
+- **Averaging:** 8x (smooths PCB electrical noise, still updates fast)
+- **Resolution:** 0.0078 C (16-bit, way more than needed)
+- **Read rate:** Only needs ~1-5 Hz for telemetry. The main loop reads it every tick but the sensor's internal conversion rate limits actual updates.
 
 ## Pin Assignments (compile-time constants)
 
@@ -202,10 +242,10 @@ constexpr uint8_t TEMP_ADDR = 0x48;
 
 ```cpp
 // sensor instances
-LSM6DSV imu1, imu2, imu3, imu4;
-BMP581Sensor baro1, baro2;
+IMU          imu1, imu2, imu3, imu4;
+Barometer    baro1, baro2;
 Magnetometer mag;
-TempSensor tmp117;
+TempSensor   tmp117;
 
 void setup() {
     Serial.begin(115200);
@@ -217,12 +257,12 @@ void setup() {
     Wire.setClock(400000);  // 400 kHz fast mode
 
     // init all sensors with flight configs
-    imu1.init(LSM6DSV::flightConfig(IMU1_CS, &SPI));
-    imu2.init(LSM6DSV::flightConfig(IMU2_CS, &SPI));
-    imu3.init(LSM6DSV::flightConfig(IMU3_CS, &SPI1));
-    imu4.init(LSM6DSV::flightConfig(IMU4_CS, &SPI1));
-    baro1.init(BMP581Sensor::flightConfig(BARO1_CS, &SPI));
-    baro2.init(BMP581Sensor::flightConfig(BARO2_CS, &SPI1));
+    imu1.init(IMU::flightConfig(IMU1_CS, &SPI));
+    imu2.init(IMU::flightConfig(IMU2_CS, &SPI));
+    imu3.init(IMU::flightConfig(IMU3_CS, &SPI1));
+    imu4.init(IMU::flightConfig(IMU4_CS, &SPI1));
+    baro1.init(Barometer::flightConfig(BARO1_CS, &SPI));
+    baro2.init(Barometer::flightConfig(BARO2_CS, &SPI1));
     mag.init();
     tmp117.init();
 
@@ -246,7 +286,7 @@ Updated CSV header:
 timestamp_us,imu1_ax,imu1_ay,imu1_az,imu1_gx,imu1_gy,imu1_gz,imu1_temp,imu2_ax,imu2_ay,imu2_az,imu2_gx,imu2_gy,imu2_gz,imu2_temp,imu3_ax,imu3_ay,imu3_az,imu3_gx,imu3_gy,imu3_gz,imu3_temp,imu4_ax,imu4_ay,imu4_az,imu4_gx,imu4_gy,imu4_gz,imu4_temp,baro1_temp,baro1_pres,baro1_alt,baro2_temp,baro2_pres,baro2_alt,mag_x,mag_y,mag_z,tmp117_temp
 ```
 
-`sd_log::log()` updated to accept `AllSensorData` instead of separate IMUData + BarometerData. Same buffered write strategy, same 1s flush interval.
+`sd_log::log()` updated to accept `SensorData` instead of separate args. Same buffered write strategy, same 1s flush interval.
 
 **Buffer sizing:** The wide row is ~450-500 bytes (38 float columns + timestamp + delimiters). The row buffer increases from `char row[256]` to `char row[512]`. The write buffer increases from 4 KB to 16 KB (`BUF_SIZE = 16384`) so it holds ~32 rows before flushing, reducing SD write frequency.
 
@@ -256,11 +296,11 @@ MATLAB reads it with `readtable('log_0000.csv')` as before, just more columns.
 
 ## State Machine Changes
 
-The state machine currently uses `IMUData` (accel magnitude) for launch/burnout detection and `BarometerData` for apogee detection. Updated to use `AllSensorData`:
+The state machine currently uses accel magnitude for launch/burnout detection and barometer altitude for apogee detection. Updated to accept `SensorData`:
 
 - Launch detection: accel magnitude from `imu[0]` (primary). Could later fuse all 4.
 - Apogee detection: altitude from `baro[0]` (primary).
-- The `PreLaunchSample` struct holds `AllSensorData` instead of separate IMU + baro.
+- The `PreLaunchSample` struct holds `SensorData` instead of separate IMU + baro.
 
 No logic changes, just struct swaps.
 
@@ -335,24 +375,24 @@ Rolling window of ~5 seconds of data. Updates at ~30 fps using `matplotlib.anima
 ## Files to Create/Modify
 
 ### New files
-- `src/sensor_data.hpp` - shared data structs (Vec3, IMU6Data, BaroData, MagData, TempData, AllSensorData)
+- `src/sensor_data.hpp` - shared data structs (Vec3, IMUData, BarometerData, MagData, TempData, SensorData)
 - `src/pins.hpp` - pin assignments and I2C addresses
-- `src/lsm6dsv.hpp` / `src/lsm6dsv.cpp` - LSM6DSVTR driver
-- `src/bmp581.hpp` / `src/bmp581.cpp` - BMP581 driver
-- `src/mmc5983.hpp` / `src/mmc5983.cpp` - MMC5983MA driver
-- `src/tmp117.hpp` / `src/tmp117.cpp` - TMP117 driver
+- `src/imu.hpp` / `src/imu.cpp` - LSM6DSVTR driver (replaces old ICM-20948 version)
+- `src/barometer.hpp` / `src/barometer.cpp` - BMP581 driver (replaces old BMP388 version)
+- `src/magnetometer.hpp` / `src/magnetometer.cpp` - MMC5983MA driver
+- `src/temp_sensor.hpp` / `src/temp_sensor.cpp` - TMP117 driver
 - `src/debug_mode.hpp` / `src/debug_mode.cpp` - debug serial dump
 - `tools/sensor_monitor.py` - Python live visualizer
 
 ### Modified files
 - `src/main.cpp` - new sensor instances, SPI1/Wire init, DEBUG_MODE routing
-- `src/sd_log_file.hpp` / `src/sd_log_file.cpp` - wide CSV with AllSensorData
-- `src/state_machine.hpp` / `src/state_machine.cpp` - use AllSensorData
+- `src/sd_log_file.hpp` / `src/sd_log_file.cpp` - wide CSV with SensorData
+- `src/state_machine.hpp` / `src/state_machine.cpp` - use SensorData
 - `Makefile` - add `debug` target with `-DDEBUG_MODE`
 
-### Removed files
-- `src/imu.hpp` / `src/imu.cpp` - replaced by lsm6dsv driver
-- `src/barometer.hpp` / `src/barometer.cpp` - replaced by bmp581 driver
+### Rewritten files (same names, completely new contents)
+- `src/imu.hpp` / `src/imu.cpp` - was ICM-20948, now LSM6DSVTR
+- `src/barometer.hpp` / `src/barometer.cpp` - was BMP388, now BMP581
 
 ### Libraries to add to `libraries/`
 - `Adafruit_LSM6DSV`
@@ -362,6 +402,6 @@ Rolling window of ~5 seconds of data. Updates at ~30 fps using `matplotlib.anima
 
 ## What This Does NOT Change
 
-- SIM_MODE: sim mode currently depends on the old `IMUData` and `BarometerData` structs. It lives on the `sim-mode` branch and will be temporarily broken by this change. It needs a separate migration to use `AllSensorData` and a new `SIM.BIN` format. That is out of scope for this branch.
+- SIM_MODE: sim mode currently depends on the old `IMUData` and `BarometerData` structs. It lives on the `sim-mode` branch and will be temporarily broken by this change. It needs a separate migration to use `SensorData` and a new `SIM.BIN` format. That is out of scope for this branch.
 - Kalman filter / airbrake actuator: future work, not touched here.
 - MPC.m: standalone MATLAB script, not affected.
