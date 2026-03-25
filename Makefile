@@ -176,6 +176,12 @@ debug:
 	-$(MAKE) clean_src
 	$(MAKE) build DEFINES="$(DEFINES) -DDEBUG_MODE"
 
+# Diagnostic build: probes each sensor individually and prints results over serial
+.PHONY: diagnostic
+diagnostic:
+	-$(MAKE) clean_src
+	$(MAKE) build DEFINES="$(DEFINES) -DDIAGNOSTIC_MODE"
+
 # Phony target to prevent conflicts with files named 'clean' and force a rebuild every time
 .PHONY: clean
 

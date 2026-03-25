@@ -14,7 +14,8 @@ constexpr uint8_t IMU4_CS  = 33;
 constexpr uint8_t BARO2_CS = 34;
 
 // I2C addresses (Wire, SDA=18, SCL=19)
-constexpr uint8_t MAG_I2C_ADDR  = 0x30;
-constexpr uint8_t TEMP_I2C_ADDR = 0x48;
+constexpr uint8_t MAG_I2C_ADDR   = 0x30;
+constexpr uint8_t TEMP1_I2C_ADDR = 0x48;
+constexpr uint8_t TEMP2_I2C_ADDR = 0x49;
 
 #endif // PINS_HPP

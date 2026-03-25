@@ -44,6 +44,10 @@ IMUConfig IMU::debugConfig(uint8_t cs_pin, SPIClass* bus) {
 bool IMU::init(const IMUConfig& config) {
     sensor_ = new SparkFun_LSM6DSV16X_SPI();
 
+    // library never sets CS pin mode — must do it before begin()
+    pinMode(config.cs_pin, OUTPUT);
+    digitalWrite(config.cs_pin, HIGH);
+
     SPISettings settings(config.spi_speed, MSBFIRST, SPI_MODE3);
     bool ok = config.spi_bus
         ? sensor_->begin(*config.spi_bus, settings, config.cs_pin)
@@ -60,21 +64,31 @@ bool IMU::init(const IMUConfig& config) {
     sensor_->setAccelDataRate(static_cast<lsm6dsv16x_data_rate_t>(config.accel_odr));
     sensor_->setGyroDataRate(static_cast<lsm6dsv16x_data_rate_t>(config.gyro_odr));
 
-    if (config.accel_lp2_enable) sensor_->enableAccelLP2Filter();
-    if (config.gyro_lp1_enable)  sensor_->enableGyroLP1Filter();
+    if (config.accel_lp2_enable) {
+        sensor_->enableAccelLP2Filter();
+    }
+    if (config.gyro_lp1_enable) {
+        sensor_->enableGyroLP1Filter();
+    }
 
     initialized_ = true;
     return true;
 }
 
 bool IMU::update() {
-    if (!initialized_) return false;
+    if (!initialized_) {
+        return false;
+    }
 
     sfe_lsm_data_t accel, gyro;
     int16_t rawTemp;
 
-    if (!sensor_->getAccel(&accel)) return false;
-    if (!sensor_->getGyro(&gyro))   return false;
+    if (!sensor_->getAccel(&accel)) {
+        return false;
+    }
+    if (!sensor_->getGyro(&gyro)) {
+        return false;
+    }
     sensor_->getRawTemp(&rawTemp);
 
     latest_.accel = {accel.xData * MG_TO_MS2,

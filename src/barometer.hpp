@@ -20,6 +20,8 @@ struct BarometerConfig {
     float     sea_level_hpa;
 };
 
+class BMP581;
+
 class Barometer {
 public:
     Barometer();
@@ -35,11 +37,10 @@ public:
     void setSeaLevelPressure(float hpa);
 
 private:
+    BMP581*       sensor_;
     bool          initialized_;
     float         sea_level_hpa_;
     BarometerData latest_;
-    struct Impl;
-    Impl*         pimpl_;
 };
 
 #endif // BAROMETER_HPP

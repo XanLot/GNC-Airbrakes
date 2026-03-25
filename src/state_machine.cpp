@@ -49,11 +49,21 @@ void StateMachine::update(const SensorData& data) {
         currentState_ = nextState;
 
         switch (currentState_) {
-            case FlightState::ON_PAD:      onEnter_OnPad();       break;
-            case FlightState::BOOST:       onEnter_Boost(data);   break;
-            case FlightState::COAST_ONSET: onEnter_CoastOnset();  break;
-            case FlightState::COAST:       onEnter_Coast();       break;
-            case FlightState::RECOVERY:    onEnter_Recovery();    break;
+            case FlightState::ON_PAD:
+                onEnter_OnPad();
+                break;
+            case FlightState::BOOST:
+                onEnter_Boost(data);
+                break;
+            case FlightState::COAST_ONSET:
+                onEnter_CoastOnset();
+                break;
+            case FlightState::COAST:
+                onEnter_Coast();
+                break;
+            case FlightState::RECOVERY:
+                onEnter_Recovery();
+                break;
         }
     }
 }
@@ -126,9 +136,15 @@ void StateMachine::onEnter_Recovery() {
 void StateMachine::setAirbrakeStatus(AirbrakeStatus status) {
     Serial.print("[AIRBRAKE] Status set to: ");
     switch (status) {
-        case AirbrakeStatus::LOCKED:      Serial.println("LOCKED");      break;
-        case AirbrakeStatus::PERMITTED:   Serial.println("PERMITTED");   break;
-        case AirbrakeStatus::ACTIVE_CONT: Serial.println("ACTIVE_CONT"); break;
+        case AirbrakeStatus::LOCKED:
+            Serial.println("LOCKED");
+            break;
+        case AirbrakeStatus::PERMITTED:
+            Serial.println("PERMITTED");
+            break;
+        case AirbrakeStatus::ACTIVE_CONT:
+            Serial.println("ACTIVE_CONT");
+            break;
     }
 }
 

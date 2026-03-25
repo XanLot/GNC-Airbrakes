@@ -3,15 +3,11 @@
 #include <SPI.h>
 #include <cmath>
 
-struct Barometer::Impl {
-    BMP581 bmp;
-};
-
 Barometer::Barometer()
-    : initialized_(false), sea_level_hpa_(1013.25f), latest_{}, pimpl_(new Impl) {}
+    : sensor_(new BMP581), initialized_(false), sea_level_hpa_(1013.25f), latest_{} {}
 
 Barometer::~Barometer() {
-    delete pimpl_;
+    delete sensor_;
 }
 
 BarometerConfig Barometer::flightConfig(uint8_t cs_pin, SPIClass* bus) {
@@ -45,39 +41,56 @@ BarometerConfig Barometer::debugConfig(uint8_t cs_pin, SPIClass* bus) {
 bool Barometer::init(const BarometerConfig& config) {
     sea_level_hpa_ = config.sea_level_hpa;
 
-    SPIClass& bus = config.spi_bus ? *config.spi_bus : SPI;
-    int8_t err = pimpl_->bmp.beginSPI(config.cs_pin, config.spi_speed, bus);
-    if (err != BMP5_OK) return false;
+    SPIClass& bus = config.spi_bus ? *config.spi_bus : SPI;  // default to SPI0 if no bus specified
+
+    // library never sets CS pin mode — must do it before begin()
+    pinMode(config.cs_pin, OUTPUT);
+    digitalWrite(config.cs_pin, HIGH);
+
+    int8_t err = sensor_->beginSPI(config.cs_pin, config.spi_speed, bus);
+    if (err != BMP5_OK) {
+        return false;
+    }
 
     bmp5_osr_odr_press_config osrCfg{};
     osrCfg.osr_t    = config.temp_osr;
     osrCfg.osr_p    = config.pressure_osr;
     osrCfg.press_en = BMP5_ENABLE;
     osrCfg.odr      = config.odr;
-    err = pimpl_->bmp.setOSRMultipliers(&osrCfg);
-    if (err != BMP5_OK) return false;
+    err = sensor_->setOSRMultipliers(&osrCfg);
+    if (err != BMP5_OK) {
+        return false;
+    }
 
     bmp5_iir_config iirCfg{};
     iirCfg.set_iir_t      = config.iir_temp;
     iirCfg.set_iir_p      = config.iir_pressure;
     iirCfg.shdw_set_iir_t = config.iir_temp;
     iirCfg.shdw_set_iir_p = config.iir_pressure;
-    err = pimpl_->bmp.setFilterConfig(&iirCfg);
-    if (err != BMP5_OK) return false;
+    err = sensor_->setFilterConfig(&iirCfg);
+    if (err != BMP5_OK) {
+        return false;
+    }
 
-    err = pimpl_->bmp.setMode(BMP5_POWERMODE_NORMAL);
-    if (err != BMP5_OK) return false;
+    err = sensor_->setMode(BMP5_POWERMODE_NORMAL);
+    if (err != BMP5_OK) {
+        return false;
+    }
 
     initialized_ = true;
     return true;
 }
 
 bool Barometer::update() {
-    if (!initialized_) return false;
+    if (!initialized_) {
+        return false;
+    }
 
     bmp5_sensor_data data{};
-    int8_t err = pimpl_->bmp.getSensorData(&data);
-    if (err != BMP5_OK) return false;
+    int8_t err = sensor_->getSensorData(&data);
+    if (err != BMP5_OK) {
+        return false;
+    }
 
     latest_.temperature = data.temperature;
     latest_.pressure    = data.pressure;

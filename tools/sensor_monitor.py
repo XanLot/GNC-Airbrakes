@@ -33,7 +33,8 @@ buffers = {
     '$BARO1': {'alt': collections.deque(maxlen=WINDOW)},
     '$BARO2': {'alt': collections.deque(maxlen=WINDOW)},
     '$MAG':   {'x': collections.deque(maxlen=WINDOW), 'y': collections.deque(maxlen=WINDOW), 'z': collections.deque(maxlen=WINDOW)},
-    '$TMP':   {'temp': collections.deque(maxlen=WINDOW)},
+    '$TMP1':  {'temp': collections.deque(maxlen=WINDOW)},
+    '$TMP2':  {'temp': collections.deque(maxlen=WINDOW)},
 }
 
 
@@ -45,7 +46,7 @@ def parse_line(line):
     if tag not in buffers:
         return
     try:
-        vals = [float(v) for v in parts[1:]]
+        vals = [float(v) if v not in ('', 'nan') else float('nan') for v in parts[1:]]
     except ValueError:
         return
 
@@ -58,7 +59,7 @@ def parse_line(line):
     elif tag == '$MAG' and len(vals) >= 3:
         buf = buffers[tag]
         buf['x'].append(vals[0]); buf['y'].append(vals[1]); buf['z'].append(vals[2])
-    elif tag == '$TMP' and len(vals) >= 1:
+    elif tag in ('$TMP1', '$TMP2') and len(vals) >= 1:
         buffers[tag]['temp'].append(vals[0])
 
 
@@ -114,17 +115,22 @@ def main():
     axes[2][2].set_ylim(-8, 8)
     axes[2][2].legend(loc='upper right', fontsize=7)
 
-    tmp_line, = axes[2][3].plot([], [], 'r-', lw=1)
+    tmp1_line, = axes[2][3].plot([], [], 'r-', lw=0.8, label='TMP1')
+    tmp2_line, = axes[2][3].plot([], [], 'b-', lw=0.8, label='TMP2')
     axes[2][3].set_title('TMP117 (C)')
     axes[2][3].set_ylim(0, 50)
+    axes[2][3].legend(loc='upper right', fontsize=7)
 
     def animate(_frame):
-        while ser.in_waiting:
-            try:
-                line = ser.readline().decode('ascii', errors='ignore').strip()
-                parse_line(line)
-            except Exception:
-                continue
+        try:
+            while ser.in_waiting:
+                try:
+                    line = ser.readline().decode('ascii', errors='ignore').strip()
+                    parse_line(line)
+                except Exception:
+                    continue
+        except OSError:
+            pass  # device disconnected — keep plot open
 
         artists = []
 
@@ -156,9 +162,11 @@ def main():
         mag_lz.set_data(range(len(mb['z'])), list(mb['z']))
         artists.extend([mag_lx, mag_ly, mag_lz])
 
-        tb = buffers['$TMP']['temp']
-        tmp_line.set_data(range(len(tb)), list(tb))
-        artists.append(tmp_line)
+        tb1 = buffers['$TMP1']['temp']
+        tmp1_line.set_data(range(len(tb1)), list(tb1))
+        tb2 = buffers['$TMP2']['temp']
+        tmp2_line.set_data(range(len(tb2)), list(tb2))
+        artists.extend([tmp1_line, tmp2_line])
 
         for row in axes:
             for ax in row:
@@ -167,7 +175,7 @@ def main():
 
         return artists
 
-    _ani = animation.FuncAnimation(fig, animate, interval=33, blit=False)
+    _ani = animation.FuncAnimation(fig, animate, interval=33, blit=False, cache_frame_data=False)
     plt.show()
 
 

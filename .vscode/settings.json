@@ -7,5 +7,7 @@
     },
     "editor.formatOnSave": false,
     "C_Cpp.intelliSenseEngine": "default",
-    "C_Cpp.errorSquiggles": "enabled"
+    "C_Cpp.errorSquiggles": "enabled",
+    "cmake.ignoreCMakeListsMissing": true,
+    "makefile.configureOnOpen": true
 }

@@ -32,7 +32,7 @@ struct SensorData {
     IMUData        imu[4];
     BarometerData  baro[2];
     MagData        mag;
-    TempData       tmp;
+    TempData       tmp[2];
     unsigned long  timestamp_us;
 };
 

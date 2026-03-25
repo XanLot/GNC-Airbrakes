@@ -3,6 +3,8 @@
 
 #include "sensor_data.hpp"
 
+class SFE_MMC5983MA;
+
 class Magnetometer {
 public:
     Magnetometer();
@@ -13,10 +15,9 @@ public:
     MagData readAll() const;
 
 private:
-    bool    initialized_;
-    MagData latest_;
-    struct Impl;
-    Impl*   pimpl_;
+    SFE_MMC5983MA* sensor_;
+    bool           initialized_;
+    MagData        latest_;
 };
 
 #endif // MAGNETOMETER_HPP

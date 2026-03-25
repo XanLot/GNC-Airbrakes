@@ -17,7 +17,9 @@ struct sd_log::Impl {
 sd_log::sd_log() : pimpl(new Impl) {}
 
 bool sd_log::init() {
-    if (!SD.begin(BUILTIN_SDCARD)) return false;
+    if (!SD.begin(BUILTIN_SDCARD)) {
+        return false;
+    }
 
     char filename[32];
     int index = 0;
@@ -26,7 +28,9 @@ bool sd_log::init() {
     } while (SD.exists(filename));
 
     pimpl->logFile = SD.open(filename, FILE_WRITE);
-    if (!pimpl->logFile) return false;
+    if (!pimpl->logFile) {
+        return false;
+    }
 
     pimpl->initialized = true;
     pimpl->bufPos = 0;
@@ -40,7 +44,7 @@ bool sd_log::init() {
         "baro1_temp,baro1_pres,baro1_alt,"
         "baro2_temp,baro2_pres,baro2_alt,"
         "mag_x,mag_y,mag_z,"
-        "tmp117_temp\n";
+        "tmp1_temp,tmp2_temp\n";
 
     pimpl->logFile.write(header, strlen(header));
     pimpl->logFile.flush();
@@ -60,7 +64,9 @@ static size_t appendFloat(char* buf, size_t pos, size_t max, float val, uint8_t 
 }
 
 void sd_log::log(const SensorData& data) {
-    if (!pimpl->initialized) return;
+    if (!pimpl->initialized) {
+        return;
+    }
 
     char row[600];
     size_t p = 0;
@@ -69,27 +75,42 @@ void sd_log::log(const SensorData& data) {
 
     for (int i = 0; i < 4; i++) {
         const auto& imu = data.imu[i];
-        p = appendFloat(row, p, sizeof(row), imu.accel.x, 4); row[p++] = ',';
-        p = appendFloat(row, p, sizeof(row), imu.accel.y, 4); row[p++] = ',';
-        p = appendFloat(row, p, sizeof(row), imu.accel.z, 4); row[p++] = ',';
-        p = appendFloat(row, p, sizeof(row), imu.gyro.x,  4); row[p++] = ',';
-        p = appendFloat(row, p, sizeof(row), imu.gyro.y,  4); row[p++] = ',';
-        p = appendFloat(row, p, sizeof(row), imu.gyro.z,  4); row[p++] = ',';
-        p = appendFloat(row, p, sizeof(row), imu.temp,    2); row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.accel.x, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.accel.y, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.accel.z, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.gyro.x, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.gyro.y, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.gyro.z, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.temp, 2);
+        row[p++] = ',';
     }
 
     for (int i = 0; i < 2; i++) {
         const auto& baro = data.baro[i];
-        p = appendFloat(row, p, sizeof(row), baro.temperature, 2); row[p++] = ',';
-        p = appendFloat(row, p, sizeof(row), baro.pressure,    1); row[p++] = ',';
-        p = appendFloat(row, p, sizeof(row), baro.altitude,    2); row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), baro.temperature, 2);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), baro.pressure, 1);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), baro.altitude, 2);
+        row[p++] = ',';
     }
 
-    p = appendFloat(row, p, sizeof(row), data.mag.field.x, 4); row[p++] = ',';
-    p = appendFloat(row, p, sizeof(row), data.mag.field.y, 4); row[p++] = ',';
-    p = appendFloat(row, p, sizeof(row), data.mag.field.z, 4); row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), data.mag.field.x, 4);
+    row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), data.mag.field.y, 4);
+    row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), data.mag.field.z, 4);
+    row[p++] = ',';
 
-    p = appendFloat(row, p, sizeof(row), data.tmp.temperature, 4);
+    p = appendFloat(row, p, sizeof(row), data.tmp[0].temperature, 4);
+    row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), data.tmp[1].temperature, 4);
     row[p++] = '\n';
 
     size_t rowLen = p;
@@ -112,7 +133,9 @@ void sd_log::log(const SensorData& data) {
 }
 
 void sd_log::flush() {
-    if (!pimpl->initialized) return;
+    if (!pimpl->initialized) {
+        return;
+    }
     if (pimpl->bufPos > 0) {
         pimpl->logFile.write(pimpl->buffer, pimpl->bufPos);
         pimpl->bufPos = 0;
