@@ -21,7 +21,7 @@ compile_commands.events.json
 
 # Claude
 .claude/
-docs/superpowers/
+docs/
 
 # Python venv
 visualiser/venv/
