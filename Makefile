@@ -67,7 +67,7 @@ DEFINES := $(TEENSY4_FLAGS)
 # -O2: Optimize the code for speed
 # --specs=nano.specs: Use newlib nano instead of full newlib to reduce binary size
 # -g3: Generate debug information for GDB. Level 3 includes the most information possible
-CPPFLAGS := $(INCLUDE_FLAGS) $(DEFINES) -MMD -MP -ffunction-sections -fdata-sections -O2 --specs=nano.specs -g3
+CPPFLAGS = $(INCLUDE_FLAGS) $(DEFINES) -MMD -MP -ffunction-sections -fdata-sections -O2 --specs=nano.specs -g3
 
 # Compiler flags for C files
 CFLAGS := $(CPU_CFLAGS)
@@ -172,8 +172,9 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 
 # Debug build: streams tagged sensor data over serial instead of running flight state machine
 .PHONY: debug
-debug: DEFINES += -DDEBUG_MODE
-debug: clean_src build
+debug:
+	-$(MAKE) clean_src
+	$(MAKE) build DEFINES="$(DEFINES) -DDEBUG_MODE"
 
 # Phony target to prevent conflicts with files named 'clean' and force a rebuild every time
 .PHONY: clean
