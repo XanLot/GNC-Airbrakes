@@ -170,6 +170,11 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 	@$(OBJDUMP) -dstz $@ > $@.dump
 
 
+# Debug build: streams tagged sensor data over serial instead of running flight state machine
+.PHONY: debug
+debug: DEFINES += -DDEBUG_MODE
+debug: clean_src build
+
 # Phony target to prevent conflicts with files named 'clean' and force a rebuild every time
 .PHONY: clean
 

@@ -1,60 +1,130 @@
-/**
- * GNC-Airbrakes Firmware
- * Teensy 4.1 Entry Point
- *
- * Preset selection — change these two lines to switch sensor configs:
- *   IMU::flightConfig()     — ±8g, 23.9 Hz LPF, 100 Hz ODR (use for actual flights)
- *   IMU::lowNoiseConfig()   — ±4g, 11.5 Hz LPF, 50 Hz ODR  (use for ground testing)
- *   Barometer::flightConfig()   — 8x OSR, IIR 15, 50 Hz, normal mode
- *   Barometer::highRateConfig() — 4x OSR, IIR 3, 200 Hz, normal mode
- */
-
 #include <Arduino.h>
+#include <SPI.h>
+#include <Wire.h>
+
+#include "sensor_data.hpp"
+#include "pins.hpp"
 #include "imu.hpp"
 #include "barometer.hpp"
+#include "magnetometer.hpp"
+#include "temp_sensor.hpp"
 #include "sd_log_file.hpp"
 #include "state_machine.hpp"
 
-IMU          imu;
-Barometer    barometer;
+#ifdef DEBUG_MODE
+#include "debug_mode.hpp"
+#endif
+
+IMU          imu1, imu2, imu3, imu4;
+Barometer    baro1, baro2;
+Magnetometer mag;
+TempSensor   tmp117;
 sd_log       sdLog;
 StateMachine stateMachine(sdLog);
+
+uint8_t sensorStatus = 0;
+constexpr uint8_t SENSOR_IMU1  = (1 << 0);
+constexpr uint8_t SENSOR_IMU2  = (1 << 1);
+constexpr uint8_t SENSOR_IMU3  = (1 << 2);
+constexpr uint8_t SENSOR_IMU4  = (1 << 3);
+constexpr uint8_t SENSOR_BARO1 = (1 << 4);
+constexpr uint8_t SENSOR_BARO2 = (1 << 5);
+constexpr uint8_t SENSOR_MAG   = (1 << 6);
+constexpr uint8_t SENSOR_TMP   = (1 << 7);
 
 void setup() {
     Serial.begin(115200);
     delay(500);
 
-    // ── Sensor init ─────────────────────────────────────────────────────────
-    // Change the preset here to switch sensor configurations.
-    if (!imu.init(IMU::flightConfig())) {
-        Serial.println("ICM-20948 init failed!");
-    }
+    SPI.begin();
+    SPI1.begin();
+    Wire.begin();
+    Wire.setClock(400000);
 
-    if (!barometer.init(Barometer::flightConfig())) {
-        Serial.println("BMP388 init failed!");
-    }
+#ifdef DEBUG_MODE
+    using ImuCfgFn  = IMUConfig(*)(uint8_t, SPIClass*);
+    using BaroCfgFn = BarometerConfig(*)(uint8_t, SPIClass*);
+    ImuCfgFn  imuCfg  = IMU::debugConfig;
+    BaroCfgFn baroCfg = Barometer::debugConfig;
+#else
+    using ImuCfgFn  = IMUConfig(*)(uint8_t, SPIClass*);
+    using BaroCfgFn = BarometerConfig(*)(uint8_t, SPIClass*);
+    ImuCfgFn  imuCfg  = IMU::flightConfig;
+    BaroCfgFn baroCfg = Barometer::flightConfig;
+#endif
 
-    if (!sdLog.init()) {
-        Serial.println("SD card init failed!");
-    }
+    if (imu1.init(imuCfg(IMU1_CS, &SPI)))    sensorStatus |= SENSOR_IMU1;
+    else Serial.println("IMU1 init failed");
 
+    if (imu2.init(imuCfg(IMU2_CS, &SPI)))    sensorStatus |= SENSOR_IMU2;
+    else Serial.println("IMU2 init failed");
+
+    if (imu3.init(imuCfg(IMU3_CS, &SPI1)))   sensorStatus |= SENSOR_IMU3;
+    else Serial.println("IMU3 init failed");
+
+    if (imu4.init(imuCfg(IMU4_CS, &SPI1)))   sensorStatus |= SENSOR_IMU4;
+    else Serial.println("IMU4 init failed");
+
+    if (baro1.init(baroCfg(BARO1_CS, &SPI))) sensorStatus |= SENSOR_BARO1;
+    else Serial.println("Baro1 init failed");
+
+    if (baro2.init(baroCfg(BARO2_CS, &SPI1))) sensorStatus |= SENSOR_BARO2;
+    else Serial.println("Baro2 init failed");
+
+    if (mag.init())    sensorStatus |= SENSOR_MAG;
+    else Serial.println("Magnetometer init failed");
+
+    if (tmp117.init()) sensorStatus |= SENSOR_TMP;
+    else Serial.println("TMP117 init failed");
+
+    if (!sdLog.init()) Serial.println("SD card init failed");
+
+    Serial.print("Sensor status: 0x");
+    Serial.println(sensorStatus, HEX);
     Serial.println("GNC-Airbrakes firmware initialized");
-    Serial.println("[STATE] Starting in ON_PAD — buffering pre-launch samples.");
+}
+
+static SensorData readAllSensors() {
+    SensorData data{};
+    data.timestamp_us = micros();
+
+    if (sensorStatus & SENSOR_IMU1) { imu1.update(); data.imu[0] = imu1.readAll(); }
+    else data.imu[0] = nanIMU();
+
+    if (sensorStatus & SENSOR_IMU2) { imu2.update(); data.imu[1] = imu2.readAll(); }
+    else data.imu[1] = nanIMU();
+
+    if (sensorStatus & SENSOR_IMU3) { imu3.update(); data.imu[2] = imu3.readAll(); }
+    else data.imu[2] = nanIMU();
+
+    if (sensorStatus & SENSOR_IMU4) { imu4.update(); data.imu[3] = imu4.readAll(); }
+    else data.imu[3] = nanIMU();
+
+    if (sensorStatus & SENSOR_BARO1) { baro1.update(); data.baro[0] = baro1.readAll(); }
+    else data.baro[0] = nanBaro();
+
+    if (sensorStatus & SENSOR_BARO2) { baro2.update(); data.baro[1] = baro2.readAll(); }
+    else data.baro[1] = nanBaro();
+
+    if (sensorStatus & SENSOR_MAG) { mag.update(); data.mag = mag.readAll(); }
+    else data.mag = nanMag();
+
+    if (sensorStatus & SENSOR_TMP) { tmp117.update(); data.tmp = tmp117.readAll(); }
+    else data.tmp = nanTemp();
+
+    return data;
 }
 
 void loop() {
-    // ── Read sensors ────────────────────────────────────────────────────────
-    bool imuReady  = imu.update();
-    bool baroReady = barometer.update();
+    SensorData data = readAllSensors();
 
-    // ── Update state machine ────────────────────────────────────────────────
-    // Always update with latest data even if sensors had no new reading this tick.
-    stateMachine.update(imu.readAll(), barometer.readAll());
-
-    // ── SD logging ──────────────────────────────────────────────────────────
-    // Only log during flight states (BOOST through RECOVERY).
-    // ON_PAD data is buffered in RAM and flushed to SD when launch is detected.
-    if (stateMachine.isLogging() && (imuReady || baroReady)) {
-        sdLog.log(imu.readAll(), barometer.readAll());
+#ifdef DEBUG_MODE
+    debugPrint(data);
+    delay(4);
+#else
+    stateMachine.update(data);
+    if (stateMachine.isLogging()) {
+        sdLog.log(data);
     }
+#endif
 }
