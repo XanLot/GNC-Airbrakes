@@ -22,49 +22,49 @@ sd_log       sdLog;
 StateMachine stateMachine(sdLog);
 AirbrakeMotor airbrakeMotor(3, 4, 5); //slpPin, stepPin, dirPin
 
-void setup() {
-    Serial.begin(115200);
-    airbrakeMotor.begin();
-    delay(500);
+// void setup() {
+//     Serial.begin(115200);
+//     airbrakeMotor.begin();
+//     delay(500);
 
-    // ── Sensor init ─────────────────────────────────────────────────────────
-    // Change the preset here to switch sensor configurations.
-    if (!imu.init(IMU::flightConfig())) {
-        Serial.println("ICM-20948 init failed!");
-    }
+//     // ── Sensor init ─────────────────────────────────────────────────────────
+//     // Change the preset here to switch sensor configurations.
+//     if (!imu.init(IMU::flightConfig())) {
+//         Serial.println("ICM-20948 init failed!");
+//     }
 
-    if (!barometer.init(Barometer::flightConfig())) {
-        Serial.println("BMP388 init failed!");
-    }
+//     if (!barometer.init(Barometer::flightConfig())) {
+//         Serial.println("BMP388 init failed!");
+//     }
 
-    if (!sdLog.init()) {
-        Serial.println("SD card init failed!");
-    }
+//     if (!sdLog.init()) {
+//         Serial.println("SD card init failed!");
+//     }
 
-    Serial.println("GNC-Airbrakes firmware initialized");
-    Serial.println("[STATE] Starting in ON_PAD — buffering pre-launch samples.");
-}
+//     Serial.println("GNC-Airbrakes firmware initialized");
+//     Serial.println("[STATE] Starting in ON_PAD — buffering pre-launch samples.");
+// }
 
-void loop() {
-    // ── Read sensors ────────────────────────────────────────────────────────
-    bool imuReady  = imu.update();
-    bool baroReady = barometer.update();
+// void loop() {
+//     // ── Read sensors ────────────────────────────────────────────────────────
+//     bool imuReady  = imu.update();
+//     bool baroReady = barometer.update();
 
-    // ── Update state machine ────────────────────────────────────────────────
-    // Always update with latest data even if sensors had no new reading this tick.
-    stateMachine.update(imu.readAll(), barometer.readAll());
-    airbrakeMotor.update(stateMachine.getAirbrakeStatus());
+//     // ── Update state machine ────────────────────────────────────────────────
+//     // Always update with latest data even if sensors had no new reading this tick.
+//     stateMachine.update(imu.readAll(), barometer.readAll());
+//     airbrakeMotor.update(stateMachine.getAirbrakeStatus());
 
-    // ── SD logging ──────────────────────────────────────────────────────────
-    // Only log during flight states (BOOST through RECOVERY).
-    // ON_PAD data is buffered in RAM and flushed to SD when launch is detected.
-    if (stateMachine.isLogging() && (imuReady || baroReady)) {
-        sdLog.log(imu.readAll(), barometer.readAll());
-    }
-}
+//     // ── SD logging ──────────────────────────────────────────────────────────
+//     // Only log during flight states (BOOST through RECOVERY).
+//     // ON_PAD data is buffered in RAM and flushed to SD when launch is detected.
+//     if (stateMachine.isLogging() && (imuReady || baroReady)) {
+//         sdLog.log(imu.readAll(), barometer.readAll());
+//     }
+// }
 
-// TEST CODE FOR STEPPER MOTOR CONTROL — IGNORE
-// // defines pins numbers
+// // TEST CODE FOR STEPPER MOTOR CONTROL — IGNORE
+// // // defines pins numbers
 // const int stepPin = 3; 
 // const int dirPin = 4; 
  
@@ -94,3 +94,72 @@ void loop() {
 //   }
 //   delay(1000);
 // }
+
+// Define stepper motor connections and steps per revolution:
+#define dirPin 2
+#define stepPin 3
+#define stepsPerRevolution 200
+
+void setup() {
+  // Declare pins as output:
+  pinMode(stepPin, OUTPUT);
+  pinMode(dirPin, OUTPUT);
+}
+
+void loop() {
+  // Set the spinning direction clockwise:
+  digitalWrite(dirPin, HIGH);
+
+  // Spin the stepper motor 1 revolution slowly:
+  for (int i = 0; i < stepsPerRevolution; i++) {
+    // These four lines result in 1 step:
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(2000);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(2000);
+  }
+
+  delay(1000);
+
+  // Set the spinning direction counterclockwise:
+  digitalWrite(dirPin, LOW);
+
+  // Spin the stepper motor 1 revolution quickly:
+  for (int i = 0; i < stepsPerRevolution; i++) {
+    // These four lines result in 1 step:
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(1000);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(1000);
+  }
+
+  delay(1000);
+
+  // Set the spinning direction clockwise:
+  digitalWrite(dirPin, HIGH);
+
+  // Spin the stepper motor 5 revolutions fast:
+  for (int i = 0; i < 5 * stepsPerRevolution; i++) {
+    // These four lines result in 1 step:
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(500);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(500);
+  }
+
+  delay(1000);
+
+  // Set the spinning direction counterclockwise:
+  digitalWrite(dirPin, LOW);
+
+  //Spin the stepper motor 5 revolutions fast:
+  for (int i = 0; i < 5 * stepsPerRevolution; i++) {
+    // These four lines result in 1 step:
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(500);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(500);
+  }
+
+  delay(1000);
+}
