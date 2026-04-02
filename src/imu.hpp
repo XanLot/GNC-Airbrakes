@@ -6,8 +6,6 @@
 #include <SPI.h>
 
 struct IMUConfig {
-    uint8_t   cs_pin;
-    SPIClass* spi_bus;
     uint32_t  spi_speed;
     // lsm6dsv16x_xl_full_scale_t: LSM6DSV16X_2g/4g/8g/16g
     uint8_t   accel_range;
@@ -27,12 +25,12 @@ public:
     IMU();
     ~IMU();
 
-    bool init(const IMUConfig& config);
+    bool init(const IMUConfig& config, uint8_t cs_pin, SPIClass* bus);
     bool update();
     IMUData readAll() const;
 
-    static IMUConfig flightConfig(uint8_t cs_pin, SPIClass* bus);
-    static IMUConfig debugConfig(uint8_t cs_pin, SPIClass* bus);
+    static const IMUConfig flightConfig;
+    static const IMUConfig debugConfig;
 
 private:
     SparkFun_LSM6DSV16X_SPI* sensor_;

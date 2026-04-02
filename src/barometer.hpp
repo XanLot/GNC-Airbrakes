@@ -6,8 +6,6 @@
 #include <SPI.h>
 
 struct BarometerConfig {
-    uint8_t   cs_pin;
-    SPIClass* spi_bus;
     uint32_t  spi_speed;
     // BMP5_OVERSAMPLING_1X .. BMP5_OVERSAMPLING_128X
     uint8_t   pressure_osr;
@@ -27,12 +25,12 @@ public:
     Barometer();
     ~Barometer();
 
-    bool init(const BarometerConfig& config);
+    bool init(const BarometerConfig& config, uint8_t cs_pin, SPIClass* bus);
     bool update();
     BarometerData readAll() const;
 
-    static BarometerConfig flightConfig(uint8_t cs_pin, SPIClass* bus);
-    static BarometerConfig debugConfig(uint8_t cs_pin, SPIClass* bus);
+    static const BarometerConfig flightConfig;
+    static const BarometerConfig debugConfig;
 
     void setSeaLevelPressure(float hpa);
 

@@ -13,45 +13,37 @@ IMU::~IMU() {
     delete sensor_;
 }
 
-IMUConfig IMU::flightConfig(uint8_t cs_pin, SPIClass* bus) {
-    return IMUConfig{
-        .cs_pin           = cs_pin,
-        .spi_bus          = bus,
-        .spi_speed        = 8000000,
-        .accel_range      = LSM6DSV16X_8g,
-        .gyro_range       = LSM6DSV16X_500dps,
-        .accel_odr        = LSM6DSV16X_ODR_AT_240Hz,
-        .gyro_odr         = LSM6DSV16X_ODR_AT_240Hz,
-        .accel_lp2_enable = true,
-        .gyro_lp1_enable  = true
-    };
-}
+const IMUConfig IMU::flightConfig = {
+    .spi_speed        = 8000000,
+    .accel_range      = LSM6DSV16X_8g,
+    .gyro_range       = LSM6DSV16X_500dps,
+    .accel_odr        = LSM6DSV16X_ODR_AT_240Hz,
+    .gyro_odr         = LSM6DSV16X_ODR_AT_240Hz,
+    .accel_lp2_enable = true,
+    .gyro_lp1_enable  = true
+};
 
-IMUConfig IMU::debugConfig(uint8_t cs_pin, SPIClass* bus) {
-    return IMUConfig{
-        .cs_pin           = cs_pin,
-        .spi_bus          = bus,
-        .spi_speed        = 3000000,
-        .accel_range      = LSM6DSV16X_4g,
-        .gyro_range       = LSM6DSV16X_250dps,
-        .accel_odr        = LSM6DSV16X_ODR_AT_60Hz,
-        .gyro_odr         = LSM6DSV16X_ODR_AT_60Hz,
-        .accel_lp2_enable = true,
-        .gyro_lp1_enable  = true
-    };
-}
+const IMUConfig IMU::debugConfig = {
+    .spi_speed        = 3000000,
+    .accel_range      = LSM6DSV16X_4g,
+    .gyro_range       = LSM6DSV16X_250dps,
+    .accel_odr        = LSM6DSV16X_ODR_AT_60Hz,
+    .gyro_odr         = LSM6DSV16X_ODR_AT_60Hz,
+    .accel_lp2_enable = true,
+    .gyro_lp1_enable  = true
+};
 
-bool IMU::init(const IMUConfig& config) {
+bool IMU::init(const IMUConfig& config, uint8_t cs_pin, SPIClass* bus) {
     sensor_ = new SparkFun_LSM6DSV16X_SPI();
 
     // library never sets CS pin mode — must do it before begin()
-    pinMode(config.cs_pin, OUTPUT);
-    digitalWrite(config.cs_pin, HIGH);
+    pinMode(cs_pin, OUTPUT);
+    digitalWrite(cs_pin, HIGH);
 
     SPISettings settings(config.spi_speed, MSBFIRST, SPI_MODE3);
-    bool ok = config.spi_bus
-        ? sensor_->begin(*config.spi_bus, settings, config.cs_pin)
-        : sensor_->begin(config.cs_pin);
+    bool ok = bus
+        ? sensor_->begin(*bus, settings, cs_pin)
+        : sensor_->begin(cs_pin);
 
     if (!ok) {
         delete sensor_;

@@ -10,44 +10,36 @@ Barometer::~Barometer() {
     delete sensor_;
 }
 
-BarometerConfig Barometer::flightConfig(uint8_t cs_pin, SPIClass* bus) {
-    return BarometerConfig{
-        .cs_pin        = cs_pin,
-        .spi_bus       = bus,
-        .spi_speed     = 8000000,
-        .pressure_osr  = BMP5_OVERSAMPLING_8X,
-        .temp_osr      = BMP5_OVERSAMPLING_1X,
-        .odr           = BMP5_ODR_50_HZ,
-        .iir_pressure  = BMP5_IIR_FILTER_COEFF_7,
-        .iir_temp      = BMP5_IIR_FILTER_BYPASS,
-        .sea_level_hpa = 1013.25f
-    };
-}
+const BarometerConfig Barometer::flightConfig = {
+    .spi_speed     = 8000000,
+    .pressure_osr  = BMP5_OVERSAMPLING_8X,
+    .temp_osr      = BMP5_OVERSAMPLING_1X,
+    .odr           = BMP5_ODR_50_HZ,
+    .iir_pressure  = BMP5_IIR_FILTER_COEFF_7,
+    .iir_temp      = BMP5_IIR_FILTER_BYPASS,
+    .sea_level_hpa = 1013.25f
+};
 
-BarometerConfig Barometer::debugConfig(uint8_t cs_pin, SPIClass* bus) {
-    return BarometerConfig{
-        .cs_pin        = cs_pin,
-        .spi_bus       = bus,
-        .spi_speed     = 4000000,
-        .pressure_osr  = BMP5_OVERSAMPLING_4X,
-        .temp_osr      = BMP5_OVERSAMPLING_1X,
-        .odr           = BMP5_ODR_25_HZ,
-        .iir_pressure  = BMP5_IIR_FILTER_COEFF_3,
-        .iir_temp      = BMP5_IIR_FILTER_BYPASS,
-        .sea_level_hpa = 1013.25f
-    };
-}
+const BarometerConfig Barometer::debugConfig = {
+    .spi_speed     = 4000000,
+    .pressure_osr  = BMP5_OVERSAMPLING_4X,
+    .temp_osr      = BMP5_OVERSAMPLING_1X,
+    .odr           = BMP5_ODR_25_HZ,
+    .iir_pressure  = BMP5_IIR_FILTER_COEFF_3,
+    .iir_temp      = BMP5_IIR_FILTER_BYPASS,
+    .sea_level_hpa = 1013.25f
+};
 
-bool Barometer::init(const BarometerConfig& config) {
+bool Barometer::init(const BarometerConfig& config, uint8_t cs_pin, SPIClass* bus) {
     sea_level_hpa_ = config.sea_level_hpa;
 
-    SPIClass& bus = config.spi_bus ? *config.spi_bus : SPI;  // default to SPI0 if no bus specified
+    SPIClass& spi = bus ? *bus : SPI;
 
     // library never sets CS pin mode — must do it before begin()
-    pinMode(config.cs_pin, OUTPUT);
-    digitalWrite(config.cs_pin, HIGH);
+    pinMode(cs_pin, OUTPUT);
+    digitalWrite(cs_pin, HIGH);
 
-    int8_t err = sensor_->beginSPI(config.cs_pin, config.spi_speed, bus);
+    int8_t err = sensor_->beginSPI(cs_pin, config.spi_speed, spi);
     if (err != BMP5_OK) {
         return false;
     }

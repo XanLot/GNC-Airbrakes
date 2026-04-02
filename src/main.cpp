@@ -45,50 +45,45 @@ void setup() {
     Wire.begin();
     Wire.setClock(400000);
 
-//chose the right config functions based on debug vs flight mode
 #ifdef DEBUG_MODE
-    using ImuCfgFn  = IMUConfig(*)(uint8_t, SPIClass*);
-    using BaroCfgFn = BarometerConfig(*)(uint8_t, SPIClass*);
-    ImuCfgFn  imuCfg  = IMU::debugConfig;
-    BaroCfgFn baroCfg = Barometer::debugConfig;
+    const IMUConfig&       imuCfg  = IMU::debugConfig;
+    const BarometerConfig& baroCfg = Barometer::debugConfig;
 #else
-    using ImuCfgFn  = IMUConfig(*)(uint8_t, SPIClass*);
-    using BaroCfgFn = BarometerConfig(*)(uint8_t, SPIClass*);
-    ImuCfgFn  imuCfg  = IMU::flightConfig;
-    BaroCfgFn baroCfg = Barometer::flightConfig;
+    const IMUConfig&       imuCfg  = IMU::flightConfig;
+    const BarometerConfig& baroCfg = Barometer::flightConfig;
 #endif
 
-    if (imu1.init(imuCfg(IMU1_CS, &SPI))) {
+    if (imu1.init(imuCfg, IMU1_CS, &SPI)) {
         sensorStatus |= SENSOR_IMU1;
     } else {
         Serial.println("IMU1 init failed");
     }
 
-    if (imu2.init(imuCfg(IMU2_CS, &SPI))) {
+    if (imu2.init(imuCfg, IMU2_CS, &SPI)) {
         sensorStatus |= SENSOR_IMU2;
     } else {
         Serial.println("IMU2 init failed");
     }
 
-    if (imu3.init(imuCfg(IMU3_CS, &SPI1))) {
+    if (imu3.init(imuCfg, IMU3_CS, &SPI1)) {
         sensorStatus |= SENSOR_IMU3;
     } else {
         Serial.println("IMU3 init failed");
     }
 
-    if (imu4.init(imuCfg(IMU4_CS, &SPI1))) {
+    if (imu4.init(imuCfg, IMU4_CS, &SPI1)) {
         sensorStatus |= SENSOR_IMU4;
     } else {
         Serial.println("IMU4 init failed");
     }
 
-    if (baro1.init(baroCfg(BARO1_CS, &SPI))) {
+    if (baro1.init(baroCfg, BARO1_CS, &SPI)) {
         sensorStatus |= SENSOR_BARO1;
     } else {
         Serial.println("Baro1 init failed");
     }
 
-    if (baro2.init(baroCfg(BARO2_CS, &SPI1))) {
+    if (baro2.init(baroCfg, BARO2_CS, &SPI1)) {
         sensorStatus |= SENSOR_BARO2;
     } else {
         Serial.println("Baro2 init failed");
