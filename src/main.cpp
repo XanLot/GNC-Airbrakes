@@ -5,24 +5,29 @@
 #include <Wire.h>
 
 #include "sensor_data.hpp"
+#include "sd_log_file.hpp"
+#include "state_machine.hpp"
+
+#ifdef SIM_MODE
+#include "sim_data.hpp"
+static int simTick = 0;
+#else
 #include "pins.hpp"
 #include "imu.hpp"
 #include "barometer.hpp"
 #include "magnetometer.hpp"
 #include "temp_sensor.hpp"
-#include "sd_log_file.hpp"
-#include "state_machine.hpp"
+#endif
 
 #ifdef DEBUG_MODE
 #include "debug_mode.hpp"
 #endif
 
+#ifndef SIM_MODE
 IMU          imu1, imu2, imu3, imu4;
 Barometer    baro1, baro2;
 Magnetometer mag;
 TempSensor   tmp1, tmp2;
-sd_log       sdLog;
-StateMachine stateMachine(sdLog);
 
 uint16_t sensorStatus = 0;
 constexpr uint16_t SENSOR_IMU1  = (1 << 0);
@@ -34,11 +39,31 @@ constexpr uint16_t SENSOR_BARO2 = (1 << 5);
 constexpr uint16_t SENSOR_MAG   = (1 << 6);
 constexpr uint16_t SENSOR_TMP1  = (1 << 7);
 constexpr uint16_t SENSOR_TMP2  = (1 << 8);
+#endif
+
+sd_log       sdLog;
+StateMachine stateMachine(sdLog);
 
 void setup() {
     Serial.begin(115200);
     delay(500);
 
+#ifdef SIM_MODE
+    Serial.println("=== SIM_MODE: reading flight profile from SD card ===");
+
+    if (!sdLog.init()) {
+        Serial.println("SD init failed — cannot open SIM.BIN, halting.");
+        while (true) delay(1000);
+    }
+    if (!simInit()) {
+        Serial.println("SIM.BIN not found or invalid header — halting.");
+        while (true) delay(1000);
+    }
+    Serial.print("SIM.BIN opened: ");
+    Serial.print(getSimLength());
+    Serial.println(" frames");
+
+#else
     SPI.begin();
     SPI1.setMISO(39);  // PCB routes SPI1 MISO to pin 39, not the default pin 1
     SPI1.begin();
@@ -112,8 +137,10 @@ void setup() {
     Serial.print("Sensor status: 0x");
     Serial.println(sensorStatus, HEX);
     Serial.println("GNC-Airbrakes firmware initialized");
+#endif
 }
 
+#ifndef SIM_MODE
 static SensorData readAllSensors() {
     SensorData data{};
     data.timestamp_us = micros();
@@ -183,9 +210,19 @@ static SensorData readAllSensors() {
 
     return data;
 }
+#endif // !SIM_MODE
 
 void loop() {
+#ifdef SIM_MODE
+    if (simTick >= getSimLength()) {
+        Serial.println("=== SIM_MODE: profile complete ===");
+        while (true) delay(1000);
+    }
+    SensorData data = getSimData(simTick++);
+    delay(4);  // pace at ~225 Hz so millis()-based timers work
+#else
     SensorData data = readAllSensors();
+#endif
 
 #ifdef DEBUG_MODE
     debugPrint(data);

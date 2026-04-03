@@ -182,6 +182,12 @@ diagnostic:
 	-$(MAKE) clean_src
 	$(MAKE) build DEFINES="$(DEFINES) -DDIAGNOSTIC_MODE"
 
+# Sim build: replays a SIM.BIN flight profile from SD card instead of reading real sensors
+.PHONY: sim
+sim:
+	-$(MAKE) clean_src
+	$(MAKE) build DEFINES="$(DEFINES) -DSIM_MODE"
+
 # Phony target to prevent conflicts with files named 'clean' and force a rebuild every time
 .PHONY: clean
 
@@ -266,11 +272,14 @@ restart:
 	@tycmd reset
 
 
-help: 
+help:
 	@echo "Basic usage: make [target]"
 	@echo "Targets:"
 	@echo "  install:      installs all required dependencies"
 	@echo "  build:        compiles the source code and links with libraries"
+	@echo "  debug:        streams tagged sensor CSV over serial instead of running flight state machine"
+	@echo "  diagnostic:   probes each sensor individually and prints results over serial"
+	@echo "  sim:          replays a SIM.BIN flight profile from SD card (no real sensors needed)"
 	@echo "  upload:       builds the source and uploads it to the Teensy"
 	@echo "  gdb:          starts GDB and attaches to the firmware running on a connected Teensy"
 	@echo "  monitor:      monitors any actively running firmware and displays serial output"
