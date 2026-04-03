@@ -222,6 +222,8 @@ void loop() {
     delay(4);  // pace at ~225 Hz so millis()-based timers work
 #else
     SensorData data = readAllSensors();
+
+    //this is where state estimator should be called
 #endif
 
 #ifdef DEBUG_MODE
