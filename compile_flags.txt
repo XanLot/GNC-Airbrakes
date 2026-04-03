@@ -23,10 +23,14 @@ arm-none-eabi
 -isystem./teensy4/debug
 -isystem./libraries
 -isystem./libraries/Wire
--isystem./libraries/Adafruit_ICM20X
+-isystem./libraries/SparkFun_LSM6DSV16X/src
+-isystem./libraries/SparkFun_LSM6DSV16X/src/st_src
+-isystem./libraries/SparkFun_BMP581/src
+-isystem./libraries/SparkFun_BMP581/src/bmp5_api
+-isystem./libraries/SparkFun_MMC5983MA/src
+-isystem./libraries/SparkFun_TMP117/src
 -isystem./libraries/Adafruit_BusIO
 -isystem./libraries/Adafruit_Sensor
--isystem./libraries/Adafruit_BMP388
 -isystem./libraries/SD/src
 -isystem./libraries/SdFat/src
 -isystem./tools/compiler/arm-gnu-toolchain/arm-none-eabi/include/c++/14.2.1
