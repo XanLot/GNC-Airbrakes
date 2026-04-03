@@ -3,9 +3,8 @@
 #include <cstring>
 #include "sd_log_file.hpp"
 
-static constexpr size_t BUF_SIZE = 4096;
-
-static constexpr unsigned long FLUSH_INTERVAL_US = 1000000; // 1 second
+static constexpr size_t BUF_SIZE = 16384;
+static constexpr unsigned long FLUSH_INTERVAL_US = 1000000;
 
 struct sd_log::Impl {
     File logFile;
@@ -24,7 +23,6 @@ bool sd_log::init() {
 
     char filename[32];
     int index = 0;
-
     do {
         snprintf(filename, sizeof(filename), "log_%04d.csv", index++);
     } while (SD.exists(filename));
@@ -39,20 +37,21 @@ bool sd_log::init() {
 
     const char header[] =
         "timestamp_us,"
-        "accel_x,accel_y,accel_z,"
-        "gyro_x,gyro_y,gyro_z,"
+        "imu1_ax,imu1_ay,imu1_az,imu1_gx,imu1_gy,imu1_gz,imu1_temp,"
+        "imu2_ax,imu2_ay,imu2_az,imu2_gx,imu2_gy,imu2_gz,imu2_temp,"
+        "imu3_ax,imu3_ay,imu3_az,imu3_gx,imu3_gy,imu3_gz,imu3_temp,"
+        "imu4_ax,imu4_ay,imu4_az,imu4_gx,imu4_gy,imu4_gz,imu4_temp,"
+        "baro1_temp,baro1_pres,baro1_alt,"
+        "baro2_temp,baro2_pres,baro2_alt,"
         "mag_x,mag_y,mag_z,"
-        "temp_c,pressure_pa,altitude_m\n";
+        "tmp1_temp,tmp2_temp\n";
 
-    // Write header directly to SD so the file isn't empty if power is cut early
     pimpl->logFile.write(header, strlen(header));
     pimpl->logFile.flush();
     pimpl->lastFlushUs = micros();
-
     return true;
 }
 
-// Append a float as text into buf at position pos. Returns new position.
 static size_t appendFloat(char* buf, size_t pos, size_t max, float val, uint8_t decimals) {
     char tmp[16];
     dtostrf(val, 0, decimals, tmp);
@@ -64,42 +63,58 @@ static size_t appendFloat(char* buf, size_t pos, size_t max, float val, uint8_t 
     return pos;
 }
 
-void sd_log::log(const IMUData& imu, const BarometerData& baro) {
-    if (!pimpl->initialized) return;
+void sd_log::log(const SensorData& data) {
+    if (!pimpl->initialized) {
+        return;
+    }
 
-    char row[256];
+    char row[600];
     size_t p = 0;
 
-    // Timestamp
-    p += snprintf(row + p, sizeof(row) - p, "%lu,", (unsigned long)micros());
+    p += snprintf(row + p, sizeof(row) - p, "%lu,", data.timestamp_us);
 
-    // Accel x,y,z (4 decimals)
-    p = appendFloat(row, p, sizeof(row), imu.accel.x, 4); row[p++] = ',';
-    p = appendFloat(row, p, sizeof(row), imu.accel.y, 4); row[p++] = ',';
-    p = appendFloat(row, p, sizeof(row), imu.accel.z, 4); row[p++] = ',';
+    for (int i = 0; i < 4; i++) {
+        const auto& imu = data.imu[i];
+        p = appendFloat(row, p, sizeof(row), imu.accel.x, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.accel.y, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.accel.z, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.gyro.x, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.gyro.y, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.gyro.z, 4);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), imu.temp, 2);
+        row[p++] = ',';
+    }
 
-    // Gyro x,y,z (4 decimals)
-    p = appendFloat(row, p, sizeof(row), imu.gyro.x, 4); row[p++] = ',';
-    p = appendFloat(row, p, sizeof(row), imu.gyro.y, 4); row[p++] = ',';
-    p = appendFloat(row, p, sizeof(row), imu.gyro.z, 4); row[p++] = ',';
+    for (int i = 0; i < 2; i++) {
+        const auto& baro = data.baro[i];
+        p = appendFloat(row, p, sizeof(row), baro.temperature, 2);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), baro.pressure, 1);
+        row[p++] = ',';
+        p = appendFloat(row, p, sizeof(row), baro.altitude, 2);
+        row[p++] = ',';
+    }
 
-    // Mag x,y,z (2 decimals)
-    p = appendFloat(row, p, sizeof(row), imu.mag.x, 2); row[p++] = ',';
-    p = appendFloat(row, p, sizeof(row), imu.mag.y, 2); row[p++] = ',';
-    p = appendFloat(row, p, sizeof(row), imu.mag.z, 2); row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), data.mag.field.x, 4);
+    row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), data.mag.field.y, 4);
+    row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), data.mag.field.z, 4);
+    row[p++] = ',';
 
-    // Temp (2 decimals)
-    p = appendFloat(row, p, sizeof(row), imu.temp, 2); row[p++] = ',';
-
-    // Pressure (1 decimal), Altitude (2 decimals)
-    p = appendFloat(row, p, sizeof(row), baro.pressure, 1); row[p++] = ',';
-    p = appendFloat(row, p, sizeof(row), baro.altitude, 2);
-
+    p = appendFloat(row, p, sizeof(row), data.tmp[0].temperature, 4);
+    row[p++] = ',';
+    p = appendFloat(row, p, sizeof(row), data.tmp[1].temperature, 4);
     row[p++] = '\n';
 
     size_t rowLen = p;
 
-    // If appending would overflow, flush current buffer first
     if (pimpl->bufPos + rowLen > BUF_SIZE) {
         pimpl->logFile.write(pimpl->buffer, pimpl->bufPos);
         pimpl->bufPos = 0;
@@ -108,7 +123,6 @@ void sd_log::log(const IMUData& imu, const BarometerData& baro) {
     memcpy(pimpl->buffer + pimpl->bufPos, row, rowLen);
     pimpl->bufPos += rowLen;
 
-    // Periodic flush so data survives power loss
     unsigned long now = micros();
     if (now - pimpl->lastFlushUs >= FLUSH_INTERVAL_US) {
         pimpl->logFile.write(pimpl->buffer, pimpl->bufPos);
@@ -119,8 +133,9 @@ void sd_log::log(const IMUData& imu, const BarometerData& baro) {
 }
 
 void sd_log::flush() {
-    if (!pimpl->initialized) return;
-
+    if (!pimpl->initialized) {
+        return;
+    }
     if (pimpl->bufPos > 0) {
         pimpl->logFile.write(pimpl->buffer, pimpl->bufPos);
         pimpl->bufPos = 0;

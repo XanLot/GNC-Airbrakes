@@ -2,7 +2,6 @@
 #include <Arduino.h>
 #include <cmath>
 
-// ─── Constructor ─────────────────────────────────────────────────────────────
 StateMachine::StateMachine(sd_log& sdLog)
     : currentState_(FlightState::ON_PAD),
       sdLog_(sdLog),
@@ -13,42 +12,34 @@ StateMachine::StateMachine(sd_log& sdLog)
       altitudeDecreasingCount_(0),
       burnoutConfirmCount_(0)
 {
-    // Zero out the pre-launch circular buffer
     for (int i = 0; i < PRE_LAUNCH_BUFFER_SIZE; i++) {
         preLaunchBuffer_[i] = PreLaunchSample{};
     }
     onEnter_OnPad();
 }
 
-// ─── Main update loop ────────────────────────────────────────────────────────
-void StateMachine::update(const IMUData& imu, const BarometerData& baro) {
+void StateMachine::update(const SensorData& data) {
     FlightState nextState = currentState_;
 
     switch (currentState_) {
         case FlightState::ON_PAD:
-            storePreLaunchSample(imu, baro);
-            nextState = checkTransition_OnPad(imu);
+            storePreLaunchSample(data);
+            nextState = checkTransition_OnPad(data);
             break;
-
         case FlightState::BOOST:
-            nextState = checkTransition_Boost(imu);
+            nextState = checkTransition_Boost(data);
             break;
-
         case FlightState::COAST_ONSET:
             nextState = checkTransition_CoastOnset();
             break;
-
         case FlightState::COAST:
-            nextState = checkTransition_Coast(baro);
-            previousAltitude_ = baro.altitude;
+            nextState = checkTransition_Coast(data);
+            previousAltitude_ = data.baro[0].altitude;
             break;
-
         case FlightState::RECOVERY:
-            // Terminal state — no transitions.
             break;
     }
 
-    // Fire entry action if state changed
     if (nextState != currentState_) {
         Serial.print("[STATE] Transition: ");
         Serial.print(static_cast<int>(currentState_));
@@ -58,74 +49,69 @@ void StateMachine::update(const IMUData& imu, const BarometerData& baro) {
         currentState_ = nextState;
 
         switch (currentState_) {
-            case FlightState::ON_PAD:      onEnter_OnPad();          break;
-            case FlightState::BOOST:       onEnter_Boost(imu, baro); break;
-            case FlightState::COAST_ONSET: onEnter_CoastOnset();     break;
-            case FlightState::COAST:       onEnter_Coast();          break;
-            case FlightState::RECOVERY:    onEnter_Recovery();       break;
+            case FlightState::ON_PAD:
+                onEnter_OnPad();
+                break;
+            case FlightState::BOOST:
+                onEnter_Boost(data);
+                break;
+            case FlightState::COAST_ONSET:
+                onEnter_CoastOnset();
+                break;
+            case FlightState::COAST:
+                onEnter_Coast();
+                break;
+            case FlightState::RECOVERY:
+                onEnter_Recovery();
+                break;
         }
     }
 }
 
-// ─── Getters ─────────────────────────────────────────────────────────────────
-FlightState StateMachine::getState() const {
-    return currentState_;
-}
+FlightState StateMachine::getState() const { return currentState_; }
+bool StateMachine::isLogging() const { return currentState_ != FlightState::ON_PAD; }
 
-bool StateMachine::isLogging() const {
-    return currentState_ != FlightState::ON_PAD;
-}
-
-// ─── Transition checks ──────────────────────────────────────────────────────
-FlightState StateMachine::checkTransition_OnPad(const IMUData& imu) {
-    if (accelMagnitude(imu) >= BOOST_ACCEL_THRESHOLD_MS2) {
+FlightState StateMachine::checkTransition_OnPad(const SensorData& data) {
+    if (accelMagnitude(data.imu[0]) >= BOOST_ACCEL_THRESHOLD_MS2)
         return FlightState::BOOST;
-    }
     return FlightState::ON_PAD;
 }
 
-FlightState StateMachine::checkTransition_Boost(const IMUData& imu) {
-    // Require multiple consecutive low-g readings to confirm burnout.
-    // A single vibration-damped sample during motor burn should not trigger early transition.
-    if (accelMagnitude(imu) <= BURNOUT_ACCEL_THRESHOLD_MS2) {
+FlightState StateMachine::checkTransition_Boost(const SensorData& data) {
+    if (accelMagnitude(data.imu[0]) <= BURNOUT_ACCEL_THRESHOLD_MS2) {
         burnoutConfirmCount_++;
     } else {
         burnoutConfirmCount_ = 0;
     }
-    if (burnoutConfirmCount_ >= BURNOUT_CONFIRM_SAMPLES) {
+    if (burnoutConfirmCount_ >= BURNOUT_CONFIRM_SAMPLES)
         return FlightState::COAST_ONSET;
-    }
     return FlightState::BOOST;
 }
 
 FlightState StateMachine::checkTransition_CoastOnset() {
-    if (millis() - coastOnsetEntryMs_ >= static_cast<unsigned long>(COAST_TIMER_SECONDS * 1000)) {
+    if (millis() - coastOnsetEntryMs_ >= static_cast<unsigned long>(COAST_TIMER_SECONDS * 1000))
         return FlightState::COAST;
-    }
     return FlightState::COAST_ONSET;
 }
 
-FlightState StateMachine::checkTransition_Coast(const BarometerData& baro) {
-    // Require multiple consecutive decreasing readings to confirm apogee.
-    // A single noisy sample should not lock the airbrakes prematurely.
-    if (baro.altitude < previousAltitude_) {
+FlightState StateMachine::checkTransition_Coast(const SensorData& data) {
+    if (data.baro[0].altitude < previousAltitude_) {
         altitudeDecreasingCount_++;
     } else {
         altitudeDecreasingCount_ = 0;
     }
-    if (altitudeDecreasingCount_ >= APOGEE_CONFIRM_SAMPLES) {
+    if (altitudeDecreasingCount_ >= APOGEE_CONFIRM_SAMPLES)
         return FlightState::RECOVERY;
-    }
     return FlightState::COAST;
 }
 
-// ─── Entry actions ──────────────────────────────────────────────────────────
 void StateMachine::onEnter_OnPad() {
     Serial.println("[STATE] ON_PAD: Waiting for launch. Airbrakes locked.");
     setAirbrakeStatus(AirbrakeStatus::LOCKED);
 }
 
-void StateMachine::onEnter_Boost(const IMUData& imu, const BarometerData& baro) {
+void StateMachine::onEnter_Boost(const SensorData& data) {
+    (void)data;
     Serial.println("[STATE] BOOST: Motor burning. Airbrakes locked.");
     setAirbrakeStatus(AirbrakeStatus::LOCKED);
     flushPreLaunchBuffer();
@@ -147,48 +133,39 @@ void StateMachine::onEnter_Recovery() {
     setAirbrakeStatus(AirbrakeStatus::LOCKED);
 }
 
-// ─── Airbrake status stub ───────────────────────────────────────────────────
 void StateMachine::setAirbrakeStatus(AirbrakeStatus status) {
     Serial.print("[AIRBRAKE] Status set to: ");
     switch (status) {
-        case AirbrakeStatus::LOCKED:      Serial.println("LOCKED");      break;
-        case AirbrakeStatus::PERMITTED:   Serial.println("PERMITTED");   break;
-        case AirbrakeStatus::ACTIVE_CONT: Serial.println("ACTIVE_CONT"); break;
+        case AirbrakeStatus::LOCKED:
+            Serial.println("LOCKED");
+            break;
+        case AirbrakeStatus::PERMITTED:
+            Serial.println("PERMITTED");
+            break;
+        case AirbrakeStatus::ACTIVE_CONT:
+            Serial.println("ACTIVE_CONT");
+            break;
     }
 }
 
-// ─── Acceleration magnitude ─────────────────────────────────────────────────
 float StateMachine::accelMagnitude(const IMUData& imu) {
     return sqrtf(imu.accel.x * imu.accel.x +
                  imu.accel.y * imu.accel.y +
                  imu.accel.z * imu.accel.z);
 }
 
-// ─── Circular buffer: store one pre-launch sample ───────────────────────────
-void StateMachine::storePreLaunchSample(const IMUData& imu, const BarometerData& baro) {
-    preLaunchBuffer_[bufferHead_].imu  = imu;
-    preLaunchBuffer_[bufferHead_].baro = baro;
+void StateMachine::storePreLaunchSample(const SensorData& data) {
+    preLaunchBuffer_[bufferHead_].data = data;
     bufferHead_ = (bufferHead_ + 1) % PRE_LAUNCH_BUFFER_SIZE;
-    if (bufferCount_ < PRE_LAUNCH_BUFFER_SIZE) {
-        bufferCount_++;
-    }
+    if (bufferCount_ < PRE_LAUNCH_BUFFER_SIZE) bufferCount_++;
 }
 
-// ─── Flush pre-launch buffer to SD ──────────────────────────────────────────
 void StateMachine::flushPreLaunchBuffer() {
-    // Determine the starting index: oldest sample in the circular buffer
-    int start;
-    if (bufferCount_ < PRE_LAUNCH_BUFFER_SIZE) {
-        start = 0;  // Buffer hasn't wrapped yet — oldest is at index 0
-    } else {
-        start = bufferHead_;  // Buffer is full — oldest is at bufferHead_
-    }
-
+    int start = (bufferCount_ < PRE_LAUNCH_BUFFER_SIZE) ? 0 : bufferHead_;
     for (int i = 0; i < bufferCount_; i++) {
         int idx = (start + i) % PRE_LAUNCH_BUFFER_SIZE;
-        sdLog_.log(preLaunchBuffer_[idx].imu, preLaunchBuffer_[idx].baro);
+        sdLog_.log(preLaunchBuffer_[idx].data);
     }
-
     Serial.print("[STATE] Flushed ");
     Serial.print(bufferCount_);
     Serial.println(" pre-launch samples to SD.");

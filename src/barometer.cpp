@@ -1,78 +1,73 @@
 #include "barometer.hpp"
-#include "Adafruit_BMP3XX.h"
+#include <SparkFun_BMP581_Arduino_Library.h>
+#include <SPI.h>
 #include <cmath>
 
-// Internal BMP3XX instance
-static Adafruit_BMP3XX bmp;
-
 Barometer::Barometer()
-    : initialized_(false),
-      sea_level_pressure_hpa_(1013.25f),
-      temperature_(0.0f),
-      pressure_(0.0f),
-      power_mode_(0) {}
+    : sensor_(new BMP581), initialized_(false), sea_level_hpa_(1013.25f), latest_{} {}
 
-BarometerConfig Barometer::defaultConfig() {
-    return BarometerConfig{
-        .cs_pin = 33,
-        .spi_speed = 1000000,
-        .temperature_oversampling = 3,  // BMP3_OVERSAMPLING_8X
-        .pressure_oversampling = 2,     // BMP3_OVERSAMPLING_4X
-        .iir_filter_coeff = 2,          // BMP3_IIR_FILTER_COEFF_3
-        .output_data_rate = 2,          // BMP3_ODR_50_HZ
-        .sea_level_pressure_hpa = 1013.25f,
-        .power_mode = 0
-    };
+Barometer::~Barometer() {
+    delete sensor_;
 }
 
-BarometerConfig Barometer::flightConfig() {
-    return BarometerConfig{
-        .cs_pin                    = 33,
-        .spi_speed                 = 1000000,
-        .temperature_oversampling  = 1,      // BMP3_OVERSAMPLING_2X
-        .pressure_oversampling     = 3,      // BMP3_OVERSAMPLING_8X
-        .iir_filter_coeff          = 5,      // BMP3_IIR_FILTER_COEFF_31 — smooths turbulence over ~32 samples
-        .output_data_rate          = 2,      // BMP3_ODR_50_HZ
-        .sea_level_pressure_hpa    = 1013.25f,
-        .power_mode                = 1       // normal mode
-    };
-}
+const BarometerConfig Barometer::flightConfig = {
+    .spi_speed     = 8000000,
+    .pressure_osr  = BMP5_OVERSAMPLING_8X,
+    .temp_osr      = BMP5_OVERSAMPLING_1X,
+    .odr           = BMP5_ODR_50_HZ,
+    .iir_pressure  = BMP5_IIR_FILTER_COEFF_7,
+    .iir_temp      = BMP5_IIR_FILTER_BYPASS,
+    .sea_level_hpa = 1013.25f
+};
 
-BarometerConfig Barometer::highRateConfig() {
-    return BarometerConfig{
-        .cs_pin                    = 33,
-        .spi_speed                 = 1000000,
-        .temperature_oversampling  = 0,      // BMP3_OVERSAMPLING_1X
-        .pressure_oversampling     = 2,      // BMP3_OVERSAMPLING_4X
-        .iir_filter_coeff          = 2,      // BMP3_IIR_FILTER_COEFF_3
-        .output_data_rate          = 0,      // BMP3_ODR_200_HZ
-        .sea_level_pressure_hpa    = 1013.25f,
-        .power_mode                = 1       // normal mode
-    };
-}
+const BarometerConfig Barometer::debugConfig = {
+    .spi_speed     = 4000000,
+    .pressure_osr  = BMP5_OVERSAMPLING_4X,
+    .temp_osr      = BMP5_OVERSAMPLING_1X,
+    .odr           = BMP5_ODR_25_HZ,
+    .iir_pressure  = BMP5_IIR_FILTER_COEFF_3,
+    .iir_temp      = BMP5_IIR_FILTER_BYPASS,
+    .sea_level_hpa = 1013.25f
+};
 
-bool Barometer::init(const BarometerConfig& config) {
-    sea_level_pressure_hpa_ = config.sea_level_pressure_hpa;
-    power_mode_ = config.power_mode;
+bool Barometer::init(const BarometerConfig& config, uint8_t cs_pin, SPIClass* bus) {
+    sea_level_hpa_ = config.sea_level_hpa;
 
-    if (!bmp.begin_SPI(config.cs_pin, &SPI, config.spi_speed)) {
+    SPIClass& spi = bus ? *bus : SPI;
+
+    // library never sets CS pin mode — must do it before begin()
+    pinMode(cs_pin, OUTPUT);
+    digitalWrite(cs_pin, HIGH);
+
+    int8_t err = sensor_->beginSPI(cs_pin, config.spi_speed, spi);
+    if (err != BMP5_OK) {
         return false;
     }
 
-    bmp.setTemperatureOversampling(config.temperature_oversampling);
-    bmp.setPressureOversampling(config.pressure_oversampling);
-    bmp.setIIRFilterCoeff(config.iir_filter_coeff);
-    bmp.setOutputDataRate(config.output_data_rate);
-
-    if (power_mode_ == 1) {
-        // TODO: set normal mode when Adafruit_BMP3XX exposes setOperationMode().
-        // The underlying Bosch driver supports BMP3_MODE_NORMAL via bmp3_set_op_mode(),
-        // but the Adafruit wrapper hardcodes BMP3_MODE_FORCED in performReading()
-        // and keeps the_sensor private. For now, fall back to forced mode via performReading().
+    bmp5_osr_odr_press_config osrCfg{};
+    osrCfg.osr_t    = config.temp_osr;
+    osrCfg.osr_p    = config.pressure_osr;
+    osrCfg.press_en = BMP5_ENABLE;
+    osrCfg.odr      = config.odr;
+    err = sensor_->setOSRMultipliers(&osrCfg);
+    if (err != BMP5_OK) {
+        return false;
     }
 
-    // Discard the first reading as it may be inaccurate
-    bmp.performReading();
+    bmp5_iir_config iirCfg{};
+    iirCfg.set_iir_t      = config.iir_temp;
+    iirCfg.set_iir_p      = config.iir_pressure;
+    iirCfg.shdw_set_iir_t = config.iir_temp;
+    iirCfg.shdw_set_iir_p = config.iir_pressure;
+    err = sensor_->setFilterConfig(&iirCfg);
+    if (err != BMP5_OK) {
+        return false;
+    }
+
+    err = sensor_->setMode(BMP5_POWERMODE_NORMAL);
+    if (err != BMP5_OK) {
+        return false;
+    }
 
     initialized_ = true;
     return true;
@@ -83,43 +78,23 @@ bool Barometer::update() {
         return false;
     }
 
-    if (power_mode_ == 1) {
-        // TODO: use non-blocking data-ready check when Adafruit_BMP3XX supports normal mode.
-        // The Bosch driver can read data via bmp3_get_sensor_data() in normal mode,
-        // but the Adafruit wrapper always triggers a forced-mode conversion in performReading().
-        // Fall back to performReading() for now.
-    }
-
-    if (!bmp.performReading()) {
+    bmp5_sensor_data data{};
+    int8_t err = sensor_->getSensorData(&data);
+    if (err != BMP5_OK) {
         return false;
     }
 
-    temperature_ = bmp.temperature;
-    pressure_ = bmp.pressure;
+    latest_.temperature = data.temperature;
+    latest_.pressure    = data.pressure;
+    float atm = latest_.pressure / 100.0f;  // Pa -> hPa
+    latest_.altitude = 44330.0f * (1.0f - powf(atm / sea_level_hpa_, 0.1903f));
     return true;
 }
 
-float Barometer::temperature() const {
-    return temperature_;
-}
-
-float Barometer::pressure() const {
-    return pressure_;
-}
-
-float Barometer::altitude() const {
-    float atmospheric = pressure_ / 100.0f;
-    return 44330.0f * (1.0f - powf(atmospheric / sea_level_pressure_hpa_, 0.1903f));
-}
-
-BarometerData Barometer::readAll() {
-    return BarometerData{
-        .temperature = temperature_,
-        .pressure = pressure_,
-        .altitude = altitude()
-    };
+BarometerData Barometer::readAll() const {
+    return latest_;
 }
 
 void Barometer::setSeaLevelPressure(float hpa) {
-    sea_level_pressure_hpa_ = hpa;
+    sea_level_hpa_ = hpa;
 }

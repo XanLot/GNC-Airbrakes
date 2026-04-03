@@ -1,65 +1,44 @@
 #ifndef BAROMETER_HPP
 #define BAROMETER_HPP
 
+#include "sensor_data.hpp"
 #include <cstdint>
+#include <SPI.h>
 
-// Barometer configuration
 struct BarometerConfig {
-    uint8_t cs_pin;                    // SPI chip select pin
-    uint32_t spi_speed;                // SPI clock speed in Hz
-    uint8_t temperature_oversampling;  // 0=none, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
-    uint8_t pressure_oversampling;     // 0=none, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
-    uint8_t iir_filter_coeff;          // 0=off, 1=1, 2=3, 3=7, 4=15, 5=31, 6=63, 7=127
-    uint8_t output_data_rate;          // 0=200Hz .. 0x11=0.001Hz
-    float sea_level_pressure_hpa;      // sea level pressure in hPa for altitude calc
-    uint8_t  power_mode;  // 0 = forced (blocking), 1 = normal (continuous background sampling)
+    uint32_t  spi_speed;
+    // BMP5_OVERSAMPLING_1X .. BMP5_OVERSAMPLING_128X
+    uint8_t   pressure_osr;
+    uint8_t   temp_osr;
+    // BMP5_ODR_50_HZ = 0x0F, etc.
+    uint8_t   odr;
+    // BMP5_IIR_FILTER_BYPASS .. BMP5_IIR_FILTER_COEFF_127
+    uint8_t   iir_pressure;
+    uint8_t   iir_temp;
+    float     sea_level_hpa;
 };
 
-// Combined barometer data reading
-struct BarometerData {
-    float temperature;  // degrees Celsius
-    float pressure;     // Pascals
-    float altitude;     // meters (based on sea level pressure)
-};
+class BMP581;
 
 class Barometer {
 public:
     Barometer();
+    ~Barometer();
 
-    // Returns a default configuration
-    static BarometerConfig defaultConfig();
-
-    // Preset: 8x OSR, IIR 15, 50 Hz, normal mode
-    static BarometerConfig flightConfig();
-
-    // Preset: 4x OSR, IIR 3, 200 Hz, normal mode
-    static BarometerConfig highRateConfig();
-
-    // Initialize the barometer with given configuration.
-    // Returns true on success.
-    bool init(const BarometerConfig& config);
-
-    // Perform a sensor reading (blocking forced mode).
-    // Returns true on success.
+    bool init(const BarometerConfig& config, uint8_t cs_pin, SPIClass* bus);
     bool update();
+    BarometerData readAll() const;
 
-    // Get last read values
-    float temperature() const;  // degrees Celsius
-    float pressure() const;     // Pascals
-    float altitude() const;     // meters
+    static const BarometerConfig flightConfig;
+    static const BarometerConfig debugConfig;
 
-    // Read all sensor data at once
-    BarometerData readAll();
-
-    // Update the sea level pressure reference for altitude calculation
     void setSeaLevelPressure(float hpa);
 
 private:
-    bool initialized_;
-    float sea_level_pressure_hpa_;
-    float temperature_;
-    float pressure_;
-    uint8_t power_mode_;
+    BMP581*       sensor_;
+    bool          initialized_;
+    float         sea_level_hpa_;
+    BarometerData latest_;
 };
 
 #endif // BAROMETER_HPP

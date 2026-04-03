@@ -67,7 +67,7 @@ DEFINES := $(TEENSY4_FLAGS)
 # -O2: Optimize the code for speed
 # --specs=nano.specs: Use newlib nano instead of full newlib to reduce binary size
 # -g3: Generate debug information for GDB. Level 3 includes the most information possible
-CPPFLAGS := $(INCLUDE_FLAGS) $(DEFINES) -MMD -MP -ffunction-sections -fdata-sections -O2 --specs=nano.specs -g3
+CPPFLAGS = $(INCLUDE_FLAGS) $(DEFINES) -MMD -MP -ffunction-sections -fdata-sections -O2 --specs=nano.specs -g3
 
 # Compiler flags for C files
 CFLAGS := $(CPU_CFLAGS)
@@ -170,6 +170,24 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 	@$(OBJDUMP) -dstz $@ > $@.dump
 
 
+# Debug build: streams tagged sensor data over serial instead of running flight state machine
+.PHONY: debug
+debug:
+	-$(MAKE) clean_src
+	$(MAKE) build DEFINES="$(DEFINES) -DDEBUG_MODE"
+
+# Diagnostic build: probes each sensor individually and prints results over serial
+.PHONY: diagnostic
+diagnostic:
+	-$(MAKE) clean_src
+	$(MAKE) build DEFINES="$(DEFINES) -DDIAGNOSTIC_MODE"
+
+# Sim build: replays a SIM.BIN flight profile from SD card instead of reading real sensors
+.PHONY: sim
+sim:
+	-$(MAKE) clean_src
+	$(MAKE) build DEFINES="$(DEFINES) -DSIM_MODE"
+
 # Phony target to prevent conflicts with files named 'clean' and force a rebuild every time
 .PHONY: clean
 
@@ -254,11 +272,14 @@ restart:
 	@tycmd reset
 
 
-help: 
+help:
 	@echo "Basic usage: make [target]"
 	@echo "Targets:"
 	@echo "  install:      installs all required dependencies"
 	@echo "  build:        compiles the source code and links with libraries"
+	@echo "  debug:        streams tagged sensor CSV over serial instead of running flight state machine"
+	@echo "  diagnostic:   probes each sensor individually and prints results over serial"
+	@echo "  sim:          replays a SIM.BIN flight profile from SD card (no real sensors needed)"
 	@echo "  upload:       builds the source and uploads it to the Teensy"
 	@echo "  gdb:          starts GDB and attaches to the firmware running on a connected Teensy"
 	@echo "  monitor:      monitors any actively running firmware and displays serial output"

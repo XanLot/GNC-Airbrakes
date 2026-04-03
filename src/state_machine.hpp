@@ -1,50 +1,39 @@
 #ifndef STATE_MACHINE_HPP
 #define STATE_MACHINE_HPP
 
-#include "imu.hpp"
-#include "barometer.hpp"
+#include "sensor_data.hpp"
 #include "sd_log_file.hpp"
 
-// ─── Flight states ────────────────────────────────────────────────────────────
-// The rocket passes through these states in order during a normal flight.
 enum class FlightState {
-    ON_PAD,       // Sitting on the launch pad. Airbrakes locked. No SD logging.
-    BOOST,        // Motor burning. High acceleration. Airbrakes locked.
-    COAST_ONSET,  // Motor burned out. Airbrakes permitted but not yet controlled.
-    COAST,        // Closed-loop GNC active. Airbrakes commanded by algorithm.
-    RECOVERY      // Apogee passed, rocket descending. Airbrakes locked.
+    ON_PAD,
+    BOOST,
+    COAST_ONSET,
+    COAST,
+    RECOVERY
 };
 
-// ─── Airbrake status ──────────────────────────────────────────────────────────
-// Describes what the airbrake actuator is allowed/commanded to do.
 enum class AirbrakeStatus {
-    LOCKED,       // Airbrake held closed. Motor not powered.
-    PERMITTED,    // Airbrake may extend, but no active control yet.
-    ACTIVE_CONT   // Closed-loop GNC is actively commanding the airbrake.
+    LOCKED,
+    PERMITTED,
+    ACTIVE_CONT
 };
 
-// ─── Configurable transition thresholds ──────────────────────────────────────
-// Change these to tune when state transitions fire.
-constexpr float BOOST_ACCEL_THRESHOLD_MS2   = 5.0f * 9.81f;  // 5g in m/s²
-constexpr float BURNOUT_ACCEL_THRESHOLD_MS2 = 0.5f * 9.81f;  // 0.5g — near-freefall after burnout (noise prevents exact 0)
-constexpr float COAST_TIMER_SECONDS         = 3.0f;          // seconds in COAST_ONSET before COAST
-constexpr int   PRE_LAUNCH_BUFFER_SIZE      = 100;           // ~1 second at 100 Hz IMU
-constexpr int   BURNOUT_CONFIRM_SAMPLES     = 3;             // consecutive low-g readings to confirm motor burnout
-constexpr int   APOGEE_CONFIRM_SAMPLES      = 5;             // consecutive decreasing altitude readings to confirm apogee
+constexpr float BOOST_ACCEL_THRESHOLD_MS2   = 5.0f * 9.81f;
+constexpr float BURNOUT_ACCEL_THRESHOLD_MS2 = 0.5f * 9.81f;
+constexpr float COAST_TIMER_SECONDS         = 3.0f;
+constexpr int   PRE_LAUNCH_BUFFER_SIZE      = 100;
+constexpr int   BURNOUT_CONFIRM_SAMPLES     = 3;
+constexpr int   APOGEE_CONFIRM_SAMPLES      = 5;
 
-// ─── Pre-launch sample ────────────────────────────────────────────────────────
-// One snapshot stored in the circular buffer during ON_PAD.
 struct PreLaunchSample {
-    IMUData imu;
-    BarometerData baro;
+    SensorData data;
 };
 
-// ─── StateMachine ─────────────────────────────────────────────────────────────
 class StateMachine {
 public:
     explicit StateMachine(sd_log& sdLog);
 
-    void update(const IMUData& imu, const BarometerData& baro);
+    void update(const SensorData& data);
     FlightState getState() const;
     bool isLogging() const;
 
@@ -61,13 +50,13 @@ private:
     int   altitudeDecreasingCount_;
     int   burnoutConfirmCount_;
 
-    FlightState checkTransition_OnPad(const IMUData& imu);
-    FlightState checkTransition_Boost(const IMUData& imu);
+    FlightState checkTransition_OnPad(const SensorData& data);
+    FlightState checkTransition_Boost(const SensorData& data);
     FlightState checkTransition_CoastOnset();
-    FlightState checkTransition_Coast(const BarometerData& baro);
+    FlightState checkTransition_Coast(const SensorData& data);
 
     void onEnter_OnPad();
-    void onEnter_Boost(const IMUData& imu, const BarometerData& baro);
+    void onEnter_Boost(const SensorData& data);
     void onEnter_CoastOnset();
     void onEnter_Coast();
     void onEnter_Recovery();
@@ -75,7 +64,7 @@ private:
     void setAirbrakeStatus(AirbrakeStatus status);
 
     static float accelMagnitude(const IMUData& imu);
-    void         storePreLaunchSample(const IMUData& imu, const BarometerData& baro);
+    void         storePreLaunchSample(const SensorData& data);
     void         flushPreLaunchBuffer();
 };
 
