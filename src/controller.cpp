@@ -2,6 +2,15 @@
 #include "apogee_predictor.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
+
+static const double CD_CLEAN      = 0.3;
+static const double CD_MAX        = 1.5;
+static const double SREF          = 0.05;
+static const double MASS          = 5.0;
+static const double APOGEE_TGT    = 1000.0;
+static const double DCd_MAX       = 0.1;
+static const double MAX_DEPLOY_MM = 100.0;
 
 MPCController::MPCController() : Cd_prev_(CD_CLEAN) {}
 
@@ -24,7 +33,7 @@ MPCOutput MPCController::update(const MPCState& state) {
     double dCd  = pred.Cd_cmd - Cd_prev_;
     dCd = std::max(-DCd_MAX, std::min(DCd_MAX, dCd));
     double Cd_limited = Cd_prev_ + dCd;
-    Cd_limited  = std::max(CD_CLEAN, std::min(CD_MAX, Cd_limited));
+    Cd_limited = std::max(CD_CLEAN, std::min(CD_MAX, Cd_limited));
 
     // Actuator model - sliding deployment
     double deploy_mm = (Cd_limited - CD_CLEAN) / (CD_MAX - CD_CLEAN) * MAX_DEPLOY_MM;
