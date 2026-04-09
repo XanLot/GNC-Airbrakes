@@ -151,6 +151,7 @@ void StateMachine::onEnter_Recovery() {
 
 void StateMachine::deployAirbrakes() {
     Serial.print("[STEPPER] Deploying to step ");
+    delay(1000); // Manual delay to ensure in coast phase, will have to change when adding MCP.
     Serial.println(DEPLOY_STEPS);
     stepper_.moveTo(DEPLOY_STEPS);
 }
