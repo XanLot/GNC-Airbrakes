@@ -1,19 +1,18 @@
 #include <AccelStepper.h>
 
-// ── Pin definitions ────────────────────────────────────────────────────────
-#define STEP_PIN        3
-#define DIR_PIN         2
-#define ENABLE_PIN      5
+// ── Pin definitions (from circuit) ────────────────────────────────────────
+#define STEP_PIN        2               // STEP on A4988
+#define DIR_PIN         3               // DIR on A4988
 
 // ── Stepper configuration ──────────────────────────────────────────────────
-#define STEPS_PER_REV   200             // tune to your motor
-#define MAX_SPEED       400.0           // steps/s
+#define STEPS_PER_REV   200             // NEMA 17 = 200 steps/rev
+#define MAX_SPEED       800.0           // steps/s
 #define ACCELERATION    400.0           // steps/s^2
 
-// ── Deployment parameters ──────────────────────────────────────────────────
-#define DEPLOY_STEPS    400             // steps = full extension, tune to your geometry
-#define DEPLOY_TIME_MS  12000           // ms after launch to deploy (12s = ~burnout + 2s)
-#define RETRACT_TIME_MS 30000           // ms after launch to retract (before apogee)
+// ── Deployment parameters — tune these on the bench ───────────────────────
+#define DEPLOY_STEPS    400             // steps to full extension
+#define DEPLOY_TIME_MS  12000           // 12s — burnout (9.83s) + 2s margin
+#define RETRACT_TIME_MS 23000           // 23s — apogee (26.42s) - 3s margin
 
 AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
 
@@ -23,27 +22,27 @@ bool retracted = false;
 void setup() {
     Serial.begin(115200);
 
-    pinMode(ENABLE_PIN, OUTPUT);
-    digitalWrite(ENABLE_PIN, LOW);     // enable motor (active low)
+    // ENA is tied to 3.3V in your circuit (always enabled) so no pinMode needed
+    // If you want software enable control, wire ENA to a digital pin instead
 
     stepper.setMaxSpeed(MAX_SPEED);
     stepper.setAcceleration(ACCELERATION);
-    stepper.setCurrentPosition(0);     // home position = fully retracted
+    stepper.setCurrentPosition(0);     // home = fully retracted
 
-    Serial.println("System ready. Waiting for launch...");
+    Serial.println("Ready. Waiting for launch...");
 }
 
 void loop() {
     unsigned long t = millis();
 
-    // ── Deploy at preset time ─────────────────────────────────────────────
+    // ── Deploy ────────────────────────────────────────────────────────────
     if (!deployed && t >= DEPLOY_TIME_MS) {
         Serial.println("Deploying airbrakes...");
         stepper.moveTo(DEPLOY_STEPS);
         deployed = true;
     }
 
-    // ── Retract before apogee ─────────────────────────────────────────────
+    // ── Retract ───────────────────────────────────────────────────────────
     if (deployed && !retracted && t >= RETRACT_TIME_MS) {
         Serial.println("Retracting airbrakes...");
         stepper.moveTo(0);
@@ -56,8 +55,8 @@ void loop() {
     // ── Status print every 500ms ──────────────────────────────────────────
     static unsigned long lastPrint = 0;
     if (t - lastPrint > 500) {
-        Serial.print("t=");    Serial.print(t / 1000.0, 2);
-        Serial.print("s  pos="); Serial.print(stepper.currentPosition());
+        Serial.print("t=");       Serial.print(t / 1000.0, 2);
+        Serial.print("s  pos=");  Serial.print(stepper.currentPosition());
         Serial.print("  target="); Serial.println(stepper.targetPosition());
         lastPrint = t;
     }
