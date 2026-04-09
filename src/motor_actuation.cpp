@@ -2,12 +2,12 @@
 
 // ── Pin definitions ────────────────────────────────────────────────────────
 #define STEP_PIN        3
-#define DIR_PIN         4
+#define DIR_PIN         2
 #define ENABLE_PIN      5
 
 // ── Stepper configuration ──────────────────────────────────────────────────
 #define STEPS_PER_REV   200             // tune to your motor
-#define MAX_SPEED       800.0           // steps/s
+#define MAX_SPEED       400.0           // steps/s
 #define ACCELERATION    400.0           // steps/s^2
 
 // ── Deployment parameters ──────────────────────────────────────────────────
