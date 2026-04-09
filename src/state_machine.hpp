@@ -3,6 +3,17 @@
 
 #include "sensor_data.hpp"
 #include "sd_log_file.hpp"
+#include <AccelStepper.h>
+#include <Arduino.h>
+
+// ── Stepper pins (from circuit) ───────────────────────────────────────────
+#define STEP_PIN        2
+#define DIR_PIN         3
+
+// ── Stepper config ────────────────────────────────────────────────────────
+#define DEPLOY_STEPS    400
+#define MAX_SPEED       800.0f
+#define ACCELERATION    400.0f
 
 enum class FlightState {
     ON_PAD,
@@ -50,6 +61,9 @@ private:
     int   altitudeDecreasingCount_;
     int   burnoutConfirmCount_;
 
+    // ── Stepper ───────────────────────────────────────────────────────────
+    AccelStepper stepper_;
+
     FlightState checkTransition_OnPad(const SensorData& data);
     FlightState checkTransition_Boost(const SensorData& data);
     FlightState checkTransition_CoastOnset();
@@ -62,6 +76,8 @@ private:
     void onEnter_Recovery();
 
     void setAirbrakeStatus(AirbrakeStatus status);
+    void deployAirbrakes();
+    void retractAirbrakes();
 
     static float accelMagnitude(const IMUData& imu);
     void         storePreLaunchSample(const SensorData& data);

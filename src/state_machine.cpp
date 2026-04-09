@@ -18,6 +18,19 @@ StateMachine::StateMachine(sd_log& sdLog)
     onEnter_OnPad();
 }
 
+// ── Stepper init — call once in setup() ──────────────────────────────────
+void StateMachine::initStepper() {
+    stepper_.setMaxSpeed(MAX_SPEED);
+    stepper_.setAcceleration(ACCELERATION);
+    stepper_.setCurrentPosition(0);
+    Serial.println("[STEPPER] Initialized at home position.");
+}
+
+// ── Stepper run — call every loop() ──────────────────────────────────────
+void StateMachine::runStepper() {
+    stepper_.run();
+}
+
 void StateMachine::update(const SensorData& data) {
     FlightState nextState = currentState_;
 
@@ -108,6 +121,7 @@ FlightState StateMachine::checkTransition_Coast(const SensorData& data) {
 void StateMachine::onEnter_OnPad() {
     Serial.println("[STATE] ON_PAD: Waiting for launch. Airbrakes locked.");
     setAirbrakeStatus(AirbrakeStatus::LOCKED);
+    retractAirbrakes();
 }
 
 void StateMachine::onEnter_Boost(const SensorData& data) {
@@ -126,11 +140,24 @@ void StateMachine::onEnter_CoastOnset() {
 void StateMachine::onEnter_Coast() {
     Serial.println("[STATE] COAST: GNC active. Airbrakes under closed-loop control.");
     setAirbrakeStatus(AirbrakeStatus::ACTIVE_CONT);
+    deployAirbrakes();
 }
 
 void StateMachine::onEnter_Recovery() {
     Serial.println("[STATE] RECOVERY: Apogee passed. Airbrakes locked.");
     setAirbrakeStatus(AirbrakeStatus::LOCKED);
+    retractAirbrakes();
+}
+
+void StateMachine::deployAirbrakes() {
+    Serial.print("[STEPPER] Deploying to step ");
+    Serial.println(DEPLOY_STEPS);
+    stepper_.moveTo(DEPLOY_STEPS);
+}
+
+void StateMachine::retractAirbrakes() {
+    Serial.println("[STEPPER] Retracting to home.");
+    stepper_.moveTo(0);
 }
 
 void StateMachine::setAirbrakeStatus(AirbrakeStatus status) {

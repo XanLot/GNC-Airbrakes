@@ -1,6 +1,7 @@
 #ifndef DIAGNOSTIC_MODE
 
 #include <Arduino.h>
+#include <AccelStepper.h>
 #include <SPI.h>
 #include <Wire.h>
 
@@ -47,6 +48,8 @@ StateMachine stateMachine(sdLog);
 void setup() {
     Serial.begin(115200);
     delay(500);
+    stateMachine.initStepper(); 
+
 
 #ifdef SIM_MODE
     Serial.println("=== SIM_MODE: reading flight profile from SD card ===");
@@ -213,6 +216,7 @@ static SensorData readAllSensors() {
 #endif // !SIM_MODE
 
 void loop() {
+    
 #ifdef SIM_MODE
     if (simTick >= getSimLength()) {
         Serial.println("=== SIM_MODE: profile complete ===");
@@ -235,6 +239,8 @@ void loop() {
         sdLog.log(data);
     }
 #endif
+
+    stateMachine.runStepper();
 }
 
 #endif // DIAGNOSTIC_MODE
