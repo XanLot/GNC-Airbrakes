@@ -3,17 +3,7 @@
 
 #include "sensor_data.hpp"
 #include "sd_log_file.hpp"
-#include <AccelStepper.h>
-#include <Arduino.h>
-
-// ── Stepper pins (from circuit) ───────────────────────────────────────────
-#define STEP_PIN        2
-#define DIR_PIN         3
-
-// ── Stepper config ────────────────────────────────────────────────────────
-#define DEPLOY_STEPS    400
-#define MAX_SPEED       800.0f
-#define ACCELERATION    400.0f
+#include "stepper.hpp"
 
 enum class FlightState {
     ON_PAD,
@@ -42,7 +32,7 @@ struct PreLaunchSample {
 
 class StateMachine {
 public:
-    explicit StateMachine(sd_log& sdLog);
+    StateMachine(sd_log& sdLog, Stepper& stepper);
 
     void update(const SensorData& data);
     FlightState getState() const;
@@ -51,6 +41,9 @@ public:
 private:
     FlightState currentState_;
     sd_log&     sdLog_;
+    Stepper&    stepper_;
+
+    static constexpr int DEPLOY_STEPS = 400;
 
     PreLaunchSample preLaunchBuffer_[PRE_LAUNCH_BUFFER_SIZE];
     int             bufferHead_;
@@ -60,9 +53,6 @@ private:
     float previousAltitude_;
     int   altitudeDecreasingCount_;
     int   burnoutConfirmCount_;
-
-    // ── Stepper ───────────────────────────────────────────────────────────
-    AccelStepper stepper_;
 
     FlightState checkTransition_OnPad(const SensorData& data);
     FlightState checkTransition_Boost(const SensorData& data);

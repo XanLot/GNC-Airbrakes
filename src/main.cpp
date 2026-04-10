@@ -1,12 +1,12 @@
 #ifndef DIAGNOSTIC_MODE
 
 #include <Arduino.h>
-#include <AccelStepper.h>
 #include <SPI.h>
 #include <Wire.h>
 
 #include "sensor_data.hpp"
 #include "sd_log_file.hpp"
+#include "stepper.hpp"
 #include "state_machine.hpp"
 
 #ifdef SIM_MODE
@@ -42,14 +42,14 @@ constexpr uint16_t SENSOR_TMP1  = (1 << 7);
 constexpr uint16_t SENSOR_TMP2  = (1 << 8);
 #endif
 
+Stepper      stepper;
 sd_log       sdLog;
-StateMachine stateMachine(sdLog);
+StateMachine stateMachine(sdLog, stepper);
 
 void setup() {
     Serial.begin(115200);
     delay(500);
-    stateMachine.initStepper(); 
-
+    stepper.init();
 
 #ifdef SIM_MODE
     Serial.println("=== SIM_MODE: reading flight profile from SD card ===");
@@ -240,7 +240,7 @@ void loop() {
     }
 #endif
 
-    stateMachine.runStepper();
+    stepper.run();
 }
 
 #endif // DIAGNOSTIC_MODE

@@ -51,8 +51,31 @@ Firmware for the IREC Airbrakes project, targeting Teensy 4.1.
 | `make clean` | Remove all build artifacts |
 | `make kill` | Stop running firmware (enter bootloader) |
 | `make restart` | Restart the Teensy |
-| `make cdb` | Generate compile_commands.json for clangd |
+| `make compile-commands` | Generate `compile_commands.json` for clangd (no Bear required) |
+| `make cdb` | Generate `compile_commands.json` via Bear (requires Bear installed) |
 | `make help` | Show available targets |
+
+## Generating compile_commands.json (for clangd / IDE support)
+
+There are two ways to generate `compile_commands.json`:
+
+**Option 1 — Bear-free (recommended, no extra tools needed):**
+```bash
+make compile-commands
+```
+This runs `tools/generate_compile_commands.sh`, which reads compiler flags directly from the Makefile and auto-discovers the cross-compiler's system include paths. No additional tools required beyond the ARM toolchain.
+
+**Option 2 — Bear:**
+```bash
+brew install bear   # macOS
+make cdb
+```
+Bear intercepts the build process to capture compiler invocations. Requires Bear to be installed.
+
+After generating `compile_commands.json`, configure clangd in your IDE to trust the cross-compiler:
+```
+--query-driver=<repo>/tools/compiler/arm-gnu-toolchain/bin/arm-none-eabi-*
+```
 
 ## VS Code Setup
 

@@ -275,16 +275,18 @@ restart:
 help:
 	@echo "Basic usage: make [target]"
 	@echo "Targets:"
-	@echo "  install:      installs all required dependencies"
-	@echo "  build:        compiles the source code and links with libraries"
-	@echo "  debug:        streams tagged sensor CSV over serial instead of running flight state machine"
-	@echo "  diagnostic:   probes each sensor individually and prints results over serial"
-	@echo "  sim:          replays a SIM.BIN flight profile from SD card (no real sensors needed)"
-	@echo "  upload:       builds the source and uploads it to the Teensy"
-	@echo "  gdb:          starts GDB and attaches to the firmware running on a connected Teensy"
-	@echo "  monitor:      monitors any actively running firmware and displays serial output"
-	@echo "  kill:         stops any running firmware"
-	@echo "  restart:      restarts any running firmware"
+	@echo "  install:          installs all required dependencies"
+	@echo "  build:            compiles the source code and links with libraries"
+	@echo "  debug:            streams tagged sensor CSV over serial instead of running flight state machine"
+	@echo "  diagnostic:       probes each sensor individually and prints results over serial"
+	@echo "  sim:              replays a SIM.BIN flight profile from SD card (no real sensors needed)"
+	@echo "  upload:           builds the source and uploads it to the Teensy"
+	@echo "  gdb:              starts GDB and attaches to the firmware running on a connected Teensy"
+	@echo "  monitor:          monitors any actively running firmware and displays serial output"
+	@echo "  kill:             stops any running firmware"
+	@echo "  restart:          restarts any running firmware"
+	@echo "  compile-commands: generate compile_commands.json for clangd (no Bear required)"
+	@echo "  cdb:              generate compile_commands.json via Bear (requires Bear installed)"
 
 
 # --- Compile DB generation with Bear -----------------------------------------
@@ -328,3 +330,29 @@ cdb:
 	  COMPILER_C=arm-none-eabi-gcc
 	@{ command -v jq >/dev/null && jq 'length' compile_commands.json; } >/dev/null 2>&1 || true
 	@echo "[cdb] Done: compile_commands.json generated"
+
+
+# --- Bear-free compile_commands.json generation ------------------------------
+# Generates compile_commands.json directly from the Makefile's own flags,
+# without requiring Bear or any other wrapper tool.
+# The script auto-discovers system include paths from the cross-compiler itself
+# and emits one entry per .c/.cc/.cpp/.cxx source file.
+#
+# Usage:  make compile-commands
+# Output: compile_commands.json (in the project root, next to the Makefile)
+#
+# clangd configuration tip: add these to your IDE's clangd settings so it
+# trusts the cross-compiler and suppresses warnings from external headers:
+#   --query-driver=$(PWD)/tools/compiler/arm-gnu-toolchain/bin/arm-none-eabi-*
+.PHONY: compile-commands
+compile-commands:
+	@CURDIR="$(CURDIR)" \
+	 BUILD_DIR="$(BUILD_DIR)" \
+	 COMPILER_CPP="$(abspath $(COMPILER_CPP))" \
+	 COMPILER_C="$(abspath $(COMPILER_C))" \
+	 TARGET_TRIPLE="arm-none-eabi" \
+	 CPPFLAGS="$(CPPFLAGS)" \
+	 CXXFLAGS="$(CXXFLAGS)" \
+	 CFLAGS="$(CFLAGS)" \
+	 SRC_FILES="$(TEENSY_SRC) $(LIBRARY_SRC) $(SRC_SRC)" \
+	 bash $(TOOLS_DIR)/generate_compile_commands.sh
