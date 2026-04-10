@@ -18,4 +18,8 @@ constexpr uint8_t MAG_I2C_ADDR   = 0x30;
 constexpr uint8_t TEMP1_I2C_ADDR = 0x48;
 constexpr uint8_t TEMP2_I2C_ADDR = 0x49;
 
+// Stepper driver (A4988: STEP/DIR)
+constexpr uint8_t STEPPER_STEP = 2;
+constexpr uint8_t STEPPER_DIR  = 3;
+
 #endif // PINS_HPP

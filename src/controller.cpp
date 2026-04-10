@@ -1,16 +1,7 @@
 #include "controller.h"
-#include "apogee_predictor.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
-
-static const double CD_CLEAN      = 0.3;
-static const double CD_MAX        = 1.5;
-static const double SREF          = 0.05;
-static const double MASS          = 5.0;
-static const double APOGEE_TGT    = 1000.0;
-static const double DCd_MAX       = 0.1;
-static const double MAX_DEPLOY_MM = 100.0;
 
 MPCController::MPCController() : Cd_prev_(CD_CLEAN) {}
 

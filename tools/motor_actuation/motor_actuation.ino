@@ -1,6 +1,8 @@
+// Standalone bench test for the A4988 stepper circuit (Arduino Mega).
+// Open this sketch in Arduino IDE and upload separately — not part of the Teensy firmware.
 #include <AccelStepper.h>
 
-// ── Pin definitions (from circuit) ────────────────────────────────────────
+// ── Pin definitions ───────────────────────────────────────────────────────
 #define STEP_PIN        2               // STEP on A4988
 #define DIR_PIN         3               // DIR on A4988
 
@@ -22,9 +24,7 @@ bool retracted = false;
 void setup() {
     Serial.begin(115200);
 
-    // ENA is tied to 3.3V in your circuit (always enabled) so no pinMode needed
-    // If you want software enable control, wire ENA to a digital pin instead
-
+    // ENA is tied to 3.3V in the circuit (always enabled) so no pinMode needed
     stepper.setMaxSpeed(MAX_SPEED);
     stepper.setAcceleration(ACCELERATION);
     stepper.setCurrentPosition(0);     // home = fully retracted
@@ -55,8 +55,8 @@ void loop() {
     // ── Status print every 500ms ──────────────────────────────────────────
     static unsigned long lastPrint = 0;
     if (t - lastPrint > 500) {
-        Serial.print("t=");       Serial.print(t / 1000.0, 2);
-        Serial.print("s  pos=");  Serial.print(stepper.currentPosition());
+        Serial.print("t=");        Serial.print(t / 1000.0, 2);
+        Serial.print("s  pos=");   Serial.print(stepper.currentPosition());
         Serial.print("  target="); Serial.println(stepper.targetPosition());
         lastPrint = t;
     }

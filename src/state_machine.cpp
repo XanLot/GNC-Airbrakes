@@ -2,9 +2,10 @@
 #include <Arduino.h>
 #include <cmath>
 
-StateMachine::StateMachine(sd_log& sdLog)
+StateMachine::StateMachine(sd_log& sdLog, Stepper& stepper)
     : currentState_(FlightState::ON_PAD),
       sdLog_(sdLog),
+      stepper_(stepper),
       bufferHead_(0),
       bufferCount_(0),
       coastOnsetEntryMs_(0),
@@ -16,19 +17,6 @@ StateMachine::StateMachine(sd_log& sdLog)
         preLaunchBuffer_[i] = PreLaunchSample{};
     }
     onEnter_OnPad();
-}
-
-// ── Stepper init — call once in setup() ──────────────────────────────────
-void StateMachine::initStepper() {
-    stepper_.setMaxSpeed(MAX_SPEED);
-    stepper_.setAcceleration(ACCELERATION);
-    stepper_.setCurrentPosition(0);
-    Serial.println("[STEPPER] Initialized at home position.");
-}
-
-// ── Stepper run — call every loop() ──────────────────────────────────────
-void StateMachine::runStepper() {
-    stepper_.run();
 }
 
 void StateMachine::update(const SensorData& data) {
@@ -150,15 +138,11 @@ void StateMachine::onEnter_Recovery() {
 }
 
 void StateMachine::deployAirbrakes() {
-    Serial.print("[STEPPER] Deploying to step ");
-    delay(1000); // Manual delay to ensure in coast phase, will have to change when adding MCP.
-    Serial.println(DEPLOY_STEPS);
-    stepper_.moveTo(DEPLOY_STEPS);
+    stepper_.deployTo(DEPLOY_STEPS);
 }
 
 void StateMachine::retractAirbrakes() {
-    Serial.println("[STEPPER] Retracting to home.");
-    stepper_.moveTo(0);
+    stepper_.retractToHome();
 }
 
 void StateMachine::setAirbrakeStatus(AirbrakeStatus status) {
