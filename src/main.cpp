@@ -38,7 +38,6 @@ constexpr uint16_t SENSOR_IMU4  = (1 << 3);
 constexpr uint16_t SENSOR_BARO1 = (1 << 4);
 constexpr uint16_t SENSOR_BARO2 = (1 << 5);
 constexpr uint16_t SENSOR_MAG   = (1 << 6);
-constexpr uint16_t SENSOR_TMP1  = (1 << 7);
 constexpr uint16_t SENSOR_TMP2  = (1 << 8);
 #endif
 
