@@ -6,14 +6,14 @@
 %%   2. Compute true body-frame sensor readings (specific force, baro pressure)
 %%   3. Add per-channel bias
 %%   4. Add white noise (per channel with independent seeds)
-%%   5. Apply on-chip LP filter model
+%%   5. Apply on-chip LP filter model (cutoff = ODR/4)
 %%   6. Quantize to ADC resolution
 %%   7. Downsample to sensor ODR
 %%   8. Write binary SIM.BIN for SD card
 %%
 %% Usage:
 %%   1. Export OpenRocket CSV with required columns (see below)
-%%   2. Configure sensor counts and settings to match firmware config
+%%   2. Configure sensor counts and settings in sim_config.m
 %%   3. Run this script — then copy SIM.BIN to SD card root
 %%
 %% Required OpenRocket CSV columns (in this order):
@@ -29,7 +29,7 @@ clear; clc; close all;
 %% ══════════════════════════════════════════════════════════════════════════
 %%  FILE PATHS
 %% ══════════════════════════════════════════════════════════════════════════
-openrocket_csv = 'TestRocketRaw_test.csv';
+openrocket_csv = 'CompSim.csv';
 output_file    = 'SIM.BIN';
 
 %% ══════════════════════════════════════════════════════════════════════════
@@ -43,87 +43,22 @@ has_mag   = 0;   % 0 or 1      (MMC5983MA on I2C — not used by state machine y
 num_temps = 0;   % 0, 1, or 2  (TMP117 on I2C — not used by state machine yet)
 
 %% ══════════════════════════════════════════════════════════════════════════
-%%  IMU CONFIGURATION  (matches firmware IMUConfig / flightConfig)
-%%
-%%  LSM6DSV16X datasheet (DS13510 Rev 4) noise specs:
-%%    Accel noise density (high-perf mode): 60 µg/√Hz  (Table 3, symbol An)
-%%    Accel zero-g offset: ±12 mg  (Table 3, symbol LA_TyOff, after calibration)
-%%    Gyro noise density (high-perf mode): 2.8 mdps/√Hz  (Table 3, symbol Rn)
-%%    Gyro zero-rate level: ±1 dps  (Table 3, symbol G_TyOff)
-%%
-%%  LP filter model: LSM6DSV16X LP2 (accel) and LP1 (gyro) cutoff ≈ ODR/4
-%%    At 240 Hz ODR → LP cutoff ≈ 60 Hz
+%%  LOAD SHARED CONFIGURATION
 %% ══════════════════════════════════════════════════════════════════════════
-imu_config = struct( ...
-    ... % ── Hardware config (matches IMUConfig struct in imu.hpp) ──
-    'accel_range_g',          8, ...       % ±8g (LSM6DSV16X_8g)
-    'gyro_range_dps',         500, ...     % ±500 dps (LSM6DSV16X_500dps)
-    'accel_odr_hz',           240, ...     % LSM6DSV16X_ODR_AT_240Hz
-    'gyro_odr_hz',            240, ...
-    'accel_lp2_enable',       true, ...    % LP2 filter on accel output
-    'gyro_lp1_enable',        true, ...    % LP1 filter on gyro output
-    ...
-    ... % ── Noise model (LSM6DSV16X datasheet Table 3) ──
-    'accel_noise_density',    60e-6, ...   % g/√Hz, high-performance mode
-    'accel_bias_mg',          12, ...      % mg, zero-g offset (after calibration)
-    'gyro_noise_density',     2.8e-3, ...  % dps/√Hz, high-performance mode
-    'gyro_bias_dps',          1, ...       % dps, zero-rate level
-    ...
-    ... % ── Feature toggles ──
-    'enable_noise',           true, ...
-    'enable_bias',            true, ...
-    'enable_lp_filter',       true, ...
-    'enable_quantization',    true, ...
-    'deterministic_noise',    true ...     % fixed RNG seed per channel for repeatability
-);
+[imu_config, baro_config, constants] = sim_config();
 
-%% ══════════════════════════════════════════════════════════════════════════
-%%  BAROMETER CONFIGURATION  (matches firmware BarometerConfig / flightConfig)
-%%
-%%  BMP581 noise: ~1.0 Pa RMS (similar to BMP388; update from BMP581 datasheet
-%%  if tighter modeling is needed)
-%% ══════════════════════════════════════════════════════════════════════════
-baro_config = struct( ...
-    ... % ── Hardware config (matches BarometerConfig struct in barometer.hpp) ──
-    'pressure_osr',           8, ...       % 8x oversampling (BMP5_OVERSAMPLING_8X)
-    'odr_hz',                 50, ...      % 50 Hz (BMP5_ODR_50_HZ)
-    'iir_coeff',              3, ...       % IIR coefficient value (0=off, 1,3,7,15,31,63,127)
-    'sea_level_hpa',          1013.25, ... % reference for altitude calculation
-    ...
-    ... % ── Noise model ──
-    'pressure_noise_pa',      1.0, ...     % Pa RMS (approximate, see BMP581 datasheet)
-    'pressure_bias_pa',       8, ...       % Pa, systematic offset per power cycle
-    ...
-    ... % ── Feature toggles ──
-    'enable_noise',           true, ...
-    'enable_bias',            true, ...
-    'enable_iir',             true, ...
-    'enable_quantization',    true, ...
-    'deterministic_noise',    true ...
-);
+g            = constants.g;
+accel_lsb_g  = constants.accel_lsb_g;
+gyro_lsb_dps = constants.gyro_lsb_dps;
+baro_iir_c   = constants.baro_iir_coeff;
+baro_osr_n   = constants.baro_osr_n;
 
-%% ══════════════════════════════════════════════════════════════════════════
-%%  CONSTANTS
-%% ══════════════════════════════════════════════════════════════════════════
-g = 9.80665;  % m/s^2
-
-% LSM6DSV16X: 16-bit ADC
-%   Accel sensitivity at ±8g: 0.244 mg/LSB  (Table 3, symbol LA_So)
-%   Gyro sensitivity at ±500 dps: 17.50 mdps/LSB  (Table 3, symbol G_So)
-accel_lsb_mg  = 0.244;                % mg/LSB
-accel_lsb_g   = accel_lsb_mg / 1000; % g/LSB
-gyro_lsb_mdps = 17.50;               % mdps/LSB
-gyro_lsb_dps  = gyro_lsb_mdps / 1000;
-
-% LP filter cutoff = ODR/4 (LSM6DSV16X typical for LP2/LP1)
-accel_lp_bw = imu_config.accel_odr_hz / 4;  % Hz
+% LP filter cutoff = ODR/4 (LSM6DSV16X LP2/LP1 typical for high-performance mode)
+accel_lp_bw = imu_config.accel_odr_hz / 4;
 gyro_lp_bw  = imu_config.gyro_odr_hz  / 4;
 
-% BMP581 IIR: exponential moving average  y[n] = (y[n-1]*c + x[n]) / (c+1)
-baro_iir_c = baro_config.iir_coeff;
-
-% BMP581 pressure noise reduction from oversampling: sigma / sqrt(osr)
-baro_effective_noise = baro_config.pressure_noise_pa / sqrt(baro_config.pressure_osr);
+% BMP581 effective noise after oversampling
+baro_effective_noise = baro_config.pressure_noise_pa / sqrt(baro_osr_n);
 
 fprintf('═══ Sensor Configuration Summary ═══\n');
 fprintf('IMUs:  %d channels, ±%dg, ODR=%d Hz, LP=%d Hz%s\n', ...
@@ -140,41 +75,27 @@ fprintf('═══════════════════════�
 %% ══════════════════════════════════════════════════════════════════════════
 fprintf('Loading OpenRocket data from: %s\n', openrocket_csv);
 
-fid_csv = fopen(openrocket_csv, 'r');
-raw_lines = {};
-while ~feof(fid_csv)
-    line = fgetl(fid_csv);
-    if ischar(line) && ~startsWith(strtrim(line), '#')
-        raw_lines{end+1} = line; %#ok<SAGROW>
-    end
-end
-fclose(fid_csv);
-
-raw_data = zeros(length(raw_lines), 15);
-for i = 1:length(raw_lines)
-    vals = str2double(strsplit(raw_lines{i}, ','));
-    raw_data(i, 1:length(vals)) = vals;
-end
-
+raw_data = readmatrix(openrocket_csv, 'NumHeaderLines', 0, 'CommentStyle', '#');
 valid    = ~isnan(raw_data(:,1));
 raw_data = raw_data(valid, :);
 fprintf('  Found %d columns, %d valid rows\n', size(raw_data,2), size(raw_data,1));
 
-or_time     = raw_data(:,1);
-or_altitude = raw_data(:,2);
-or_vy       = raw_data(:,3);
-or_ay       = raw_data(:,4);
-or_lat_dist = raw_data(:,5);
-or_vx       = raw_data(:,6);
-or_ax       = raw_data(:,7);
-or_zenith   = raw_data(:,8);
-or_mass     = raw_data(:,9);
-or_thrust   = raw_data(:,10);
-or_drag     = raw_data(:,11);
+% Map columns by index — order matches OpenRocket export format
+or_time     = raw_data(:,1);   % s
+or_altitude = raw_data(:,2);   % m
+or_vy       = raw_data(:,3);   % m/s   vertical velocity
+or_ay       = raw_data(:,4);   % m/s^2 vertical acceleration
+or_lat_dist = raw_data(:,5);   % m     lateral distance
+or_vx       = raw_data(:,6);   % m/s   lateral velocity
+or_ax       = raw_data(:,7);   % m/s^2 lateral acceleration
+or_zenith   = raw_data(:,8);   % rad   angle from vertical (0 = pointing straight up)
+or_mass     = raw_data(:,9);   % kg
+or_thrust   = raw_data(:,10);  % N
+or_drag     = raw_data(:,11);  % N
 or_cd       = raw_data(:,12);
-or_pressure = raw_data(:,13);
-or_density  = raw_data(:,14);
-or_ref_area = raw_data(:,15);
+or_pressure = raw_data(:,13);  % Pa
+or_density  = raw_data(:,14);  % kg/m^3
+or_ref_area = raw_data(:,15);  % m^2
 
 N_or  = length(or_time);
 dt_or = median(diff(or_time));
@@ -184,20 +105,26 @@ fprintf('  Duration: %.2f s, OR sample rate: ~%.1f Hz\n', or_time(end), fs_or);
 %% ══════════════════════════════════════════════════════════════════════════
 %%  STEP 2: COMPUTE TRUE SENSOR READINGS AT HIGH RATE
 %% ══════════════════════════════════════════════════════════════════════════
-% Accelerometer reads specific force in body frame.
-% sf_inertial = a_coord - g_vector  (g_vector = [0; -g] in inertial frame)
-%   sf_x = ax_lateral
-%   sf_y = ay_vertical + g
-% Then rotate to body frame using zenith angle β.
+% Accelerometer measures specific force in the body frame.
+% Specific force in inertial frame:
+%   sf_x = ax_lateral           (lateral coord accel = lateral specific force)
+%   sf_y = ay_vertical + g      (remove gravity from coord accel)
+%
+% Rotate to body frame using zenith angle β (angle from vertical, 0 = straight up):
+%   body_z (along nose)  =  sf_x·sin(β) + sf_y·cos(β)
+%   body_x (lateral)     =  sf_x·cos(β) - sf_y·sin(β)
+%   body_y               =  0  (2D assumption)
+%
+% Check at launchpad: β=0 → body_z = sf_y = g, body_x = 0. Correct.
 
 fprintf('Computing true body-frame sensor readings...\n');
 
 sf_x_inertial = or_ax;
 sf_y_inertial = or_ay + g;
-beta          = or_zenith;
+beta          = or_zenith;   % already angle from vertical — no conversion needed
 
-true_accel_bz = sf_x_inertial .* sin(beta) + sf_y_inertial .* cos(beta);  % along nose
-true_accel_bx = sf_x_inertial .* cos(beta) - sf_y_inertial .* sin(beta);  % lateral
+true_accel_bz = sf_x_inertial .* sin(beta) + sf_y_inertial .* cos(beta);
+true_accel_bx = sf_x_inertial .* cos(beta) - sf_y_inertial .* sin(beta);
 true_accel_by = zeros(N_or, 1);
 
 true_accel_bz_g = true_accel_bz / g;
@@ -206,7 +133,7 @@ true_accel_by_g = true_accel_by / g;
 
 true_pressure = or_pressure;
 
-true_gyro_y     = gradient(beta, or_time);  % pitch rate rad/s
+true_gyro_y     = gradient(beta, or_time);   % pitch rate rad/s
 true_gyro_x     = zeros(N_or, 1);
 true_gyro_z     = zeros(N_or, 1);
 true_gyro_x_dps = rad2deg(true_gyro_x);
@@ -236,7 +163,7 @@ pressure_hi   = interp1(or_time, true_pressure,    t_internal, 'pchip');
 %%  Each channel gets independent noise (different RNG seed per channel).
 %%  All channels share the same truth signal — only noise/bias differs.
 %% ══════════════════════════════════════════════════════════════════════════
-imu_out = cell(num_imus, 1);  % each cell: struct with accel_ms2, gyro_rads, temp
+imu_out = cell(num_imus, 1);
 
 for ch = 1:num_imus
     fprintf('\nProcessing IMU channel %d/%d...\n', ch, num_imus);
@@ -281,7 +208,7 @@ for ch = 1:num_imus
         fprintf('  Gyro noise RMS pre-filter:  %.4f dps\n', g_noise_rms);
     end
 
-    % Step 6: LP filter (2nd-order Butterworth at ODR/4)
+    % Step 6: LP filter (2nd-order Butterworth at ODR/4 — matches LSM6DSV16X LP2/LP1)
     if imu_config.enable_lp_filter
         [b_a, a_a] = butter(2, accel_lp_bw / (fs_internal/2));
         ax = filtfilt(b_a, a_a, ax);
@@ -296,7 +223,7 @@ for ch = 1:num_imus
             accel_lp_bw, gyro_lp_bw);
     end
 
-    % Step 7: quantize to 16-bit ADC
+    % Step 7: quantize to 16-bit ADC (LSM6DSV16X)
     if imu_config.enable_quantization
         ax = clamp_and_quantize(ax, accel_lsb_g, imu_config.accel_range_g);
         ay = clamp_and_quantize(ay, accel_lsb_g, imu_config.accel_range_g);
@@ -307,7 +234,7 @@ for ch = 1:num_imus
     end
 
     % Downsample to IMU ODR
-    t_imu = (t_internal(1) : 1/imu_config.accel_odr_hz : t_internal(end))';
+    t_imu  = (t_internal(1) : 1/imu_config.accel_odr_hz : t_internal(end))';
     ax_out = interp1(t_internal, ax, t_imu, 'nearest');
     ay_out = interp1(t_internal, ay, t_imu, 'nearest');
     az_out = interp1(t_internal, az, t_imu, 'nearest');
@@ -317,15 +244,15 @@ for ch = 1:num_imus
     N_imu  = length(t_imu);
 
     imu_out{ch} = struct( ...
-        'ax_ms2', ax_out * g, ...
-        'ay_ms2', ay_out * g, ...
-        'az_ms2', az_out * g, ...
+        'ax_ms2',  ax_out * g, ...
+        'ay_ms2',  ay_out * g, ...
+        'az_ms2',  az_out * g, ...
         'gx_rads', deg2rad(gx_out), ...
         'gy_rads', deg2rad(gy_out), ...
         'gz_rads', deg2rad(gz_out), ...
-        'temp',   25.0 * ones(N_imu, 1), ...  % on-die temp placeholder
-        'N',      N_imu, ...
-        't',      t_imu ...
+        'temp',    25.0 * ones(N_imu, 1), ...
+        'N',       N_imu, ...
+        't',       t_imu ...
     );
 end
 
@@ -357,7 +284,7 @@ for ch = 1:num_baros
     end
 
     if baro_config.enable_iir && baro_iir_c > 0
-        p_filt = zeros(N_internal, 1);
+        p_filt    = zeros(N_internal, 1);
         p_filt(1) = p(1);
         for i = 2:N_internal
             p_filt(i) = (p_filt(i-1) * baro_iir_c + p(i)) / (baro_iir_c + 1);
@@ -366,29 +293,32 @@ for ch = 1:num_baros
     end
 
     if baro_config.enable_quantization
-        baro_lsb_pa = 0.01;
+        % BMP581 24-bit ADC: resolution scales with OSR, floor at 1/64 Pa
+        baro_lsb_pa = max(1.0 / baro_osr_n, 1/64);
         p = round(p / baro_lsb_pa) * baro_lsb_pa;
     end
 
     % Downsample to baro ODR then resample to IMU tick rate
-    t_baro   = (t_internal(1) : 1/baro_config.odr_hz : t_internal(end))';
-    p_baro   = interp1(t_internal, p, t_baro, 'nearest');
-    p_imu    = interp1(t_baro, p_baro, t_frames, 'nearest', p_baro(end));
+    t_baro = (t_internal(1) : 1/baro_config.odr_hz : t_internal(end))';
+    p_baro = interp1(t_internal, p, t_baro, 'nearest');
+    p_imu  = interp1(t_baro, p_baro, t_frames, 'nearest', p_baro(end));
 
-    slp      = baro_config.sea_level_hpa * 100;
-    alt_imu  = 44330 * (1 - (p_imu / slp).^(1/5.255));
+    slp     = baro_config.sea_level_hpa * 100;
+    alt_imu = 44330 * (1 - (p_imu / slp).^(1/5.255));
 
     baro_out{ch} = struct( ...
-        'temp',     25.0 * ones(N_frames, 1), ...  % placeholder
+        'temp',     25.0 * ones(N_frames, 1), ...
         'pressure', p_imu, ...
-        'altitude', alt_imu ...
+        'altitude', alt_imu, ...
+        't_baro',   t_baro, ...
+        'p_baro',   p_baro ...
     );
 end
 
 %% ══════════════════════════════════════════════════════════════════════════
 %%  STEP 8: WRITE BINARY FILE
 %%
-%%  SIM.BIN format:
+%%  SIM.BIN format (all values little-endian):
 %%    Header (16 bytes):
 %%      magic      uint32  0x424D4953
 %%      count      uint32  number of frames
@@ -404,7 +334,7 @@ end
 %%      MagData (if has_mag):     field.x/y/z (Gauss)
 %%      TempData[num_temps]:      temperature (°C)
 %%
-%%  Field order matches C++ struct memory layout (sensor_data.hpp).
+%%  Field order matches C++ struct layout in sensor_data.hpp.
 %%  Frame stride = num_imus*28 + num_baros*12 + has_mag*12 + num_temps*4 bytes
 %% ══════════════════════════════════════════════════════════════════════════
 fprintf('\nWriting binary file: %s\n', output_file);
@@ -415,35 +345,35 @@ if fid == -1
 end
 
 SIM_MAGIC = uint32(hex2dec('424D4953'));
-fwrite(fid, SIM_MAGIC,                  'uint32', 0, 'ieee-le');
-fwrite(fid, uint32(N_frames),           'uint32', 0, 'ieee-le');
+fwrite(fid, SIM_MAGIC,                       'uint32', 0, 'ieee-le');
+fwrite(fid, uint32(N_frames),                'uint32', 0, 'ieee-le');
 fwrite(fid, single(imu_config.accel_odr_hz), 'single', 0, 'ieee-le');
-fwrite(fid, uint8(num_imus),            'uint8');
-fwrite(fid, uint8(num_baros),           'uint8');
-fwrite(fid, uint8(has_mag),             'uint8');
-fwrite(fid, uint8(num_temps),           'uint8');
-
-frame_stride = num_imus*7 + num_baros*3 + has_mag*3 + num_temps;  % in floats
+fwrite(fid, uint8(num_imus),                 'uint8');
+fwrite(fid, uint8(num_baros),                'uint8');
+fwrite(fid, uint8(has_mag),                  'uint8');
+fwrite(fid, uint8(num_temps),                'uint8');
 
 for f = 1:N_frames
     for ch = 1:num_imus
         d = imu_out{ch};
-        fwrite(fid, single([d.ax_ms2(f), d.ay_ms2(f), d.az_ms2(f), ...
+        % Field order: accel.x/y/z, gyro.x/y/z, temp — matches IMUData struct
+        fwrite(fid, single([d.ax_ms2(f),  d.ay_ms2(f),  d.az_ms2(f), ...
                             d.gx_rads(f), d.gy_rads(f), d.gz_rads(f), ...
-                            d.temp(f)]), ...
-               'single', 0, 'ieee-le');
+                            d.temp(f)]), 'single', 0, 'ieee-le');
     end
     for ch = 1:num_baros
         d = baro_out{ch};
+        % Field order: temperature, pressure, altitude — matches BarometerData struct
         fwrite(fid, single([d.temp(f), d.pressure(f), d.altitude(f)]), ...
                'single', 0, 'ieee-le');
     end
-    % has_mag and num_temps not written here since defaults are 0
+    % has_mag and num_temps are 0 by default — nothing written for them
 end
 
 fclose(fid);
 
-expected_bytes = 16 + N_frames * (frame_stride * 4);
+frame_stride   = num_imus*28 + num_baros*12 + has_mag*12 + num_temps*4;
+expected_bytes = 16 + N_frames * frame_stride;
 actual_bytes   = dir(output_file).bytes;
 fprintf('  Frames: %d  Rate: %.1f Hz  Duration: %.1f s\n', ...
     N_frames, imu_config.accel_odr_hz, N_frames / imu_config.accel_odr_hz);
@@ -480,7 +410,7 @@ subplot(3,2,3);
 plot(or_time, or_pressure, 'b-', 'DisplayName', 'Truth');
 hold on;
 for ch = 1:num_baros
-    plot(t_frames, baro_out{ch}.pressure, '.', 'MarkerSize', 2, ...
+    plot(baro_out{ch}.t_baro, baro_out{ch}.p_baro, '.', 'MarkerSize', 2, ...
          'DisplayName', sprintf('Baro%d', ch));
 end
 xlabel('Time (s)'); ylabel('Pressure (Pa)');
@@ -514,25 +444,37 @@ xlabel('Time (s)'); title('Flight Profile'); grid on;
 sgtitle('SIM.BIN Data Validation');
 
 %% ══════════════════════════════════════════════════════════════════════════
-%%  SAVE TRUTH DATA FOR KALMAN FILTER VALIDATION
+%%  EXPORT TRUTH DATA FOR EKF VALIDATION
 %% ══════════════════════════════════════════════════════════════════════════
 truth = struct();
 truth.t        = t_frames;
-truth.x        = interp1(or_time, or_lat_dist, t_frames, 'pchip');
-truth.vx       = interp1(or_time, or_vx,       t_frames, 'pchip');
-truth.y        = interp1(or_time, or_altitude, t_frames, 'pchip');
-truth.vy       = interp1(or_time, or_vy,       t_frames, 'pchip');
-truth.beta     = interp1(or_time, or_zenith,   t_frames, 'pchip');
-truth.mass     = interp1(or_time, or_mass,     t_frames, 'pchip');
-truth.thrust   = interp1(or_time, or_thrust,   t_frames, 'pchip');
-truth.drag     = interp1(or_time, or_drag,     t_frames, 'pchip');
-truth.cd       = interp1(or_time, or_cd,       t_frames, 'pchip');
-truth.ref_area = interp1(or_time, or_ref_area, t_frames, 'pchip');
-truth.density  = interp1(or_time, or_density,  t_frames, 'pchip');
-truth.pressure = interp1(or_time, or_pressure, t_frames, 'pchip');
+truth.x        = interp1(or_time, or_lat_dist,  t_frames, 'pchip');
+truth.vx       = interp1(or_time, or_vx,        t_frames, 'pchip');
+truth.y        = interp1(or_time, or_altitude,  t_frames, 'pchip');
+truth.vy       = interp1(or_time, or_vy,        t_frames, 'pchip');
+truth.beta     = interp1(or_time, or_zenith,    t_frames, 'pchip');
+truth.mass     = interp1(or_time, or_mass,      t_frames, 'pchip');
+truth.thrust   = interp1(or_time, or_thrust,    t_frames, 'pchip');
+truth.drag     = interp1(or_time, or_drag,      t_frames, 'pchip');
+truth.cd       = interp1(or_time, or_cd,        t_frames, 'pchip');
+truth.ref_area = interp1(or_time, or_ref_area,  t_frames, 'pchip');
+truth.density  = interp1(or_time, or_density,   t_frames, 'pchip');
+truth.pressure = interp1(or_time, or_pressure,  t_frames, 'pchip');
 
-save('truth_data.mat', 'truth');
-fprintf('  Saved truth_data.mat for Kalman filter validation\n');
+% Also save sensor outputs for EKF validation scripts
+accel_bx_out_ms2 = imu_out{1}.ax_ms2;
+accel_by_out_ms2 = imu_out{1}.ay_ms2;
+accel_bz_out_ms2 = imu_out{1}.az_ms2;
+t_accel          = t_frames;
+t_baro           = baro_out{1}.t_baro;
+pressure_out     = baro_out{1}.p_baro;
+
+save('truth_data.mat', 'truth', ...
+    'pressure_out', 't_baro', ...
+    'accel_bx_out_ms2', 'accel_by_out_ms2', 'accel_bz_out_ms2', ...
+    't_accel', ...
+    'imu_config', 'baro_config');
+fprintf('  Saved truth_data.mat for EKF validation\n');
 
 %% ══════════════════════════════════════════════════════════════════════════
 %%  HELPER FUNCTIONS
