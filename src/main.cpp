@@ -8,6 +8,7 @@
 #include "sd_log_file.hpp"
 #include "stepper.hpp"
 #include "state_machine.hpp"
+// #include "state_estimator.hpp"
 
 #ifdef SIM_MODE
 // SIM_MODE allows the firmware to simulate sensor data from SIM.BIN on the SD card.
@@ -57,6 +58,7 @@ constexpr uint16_t SENSOR_TMP2  = (1 << 8);
 Stepper      stepper;
 sd_log       sdLog;
 StateMachine stateMachine(sdLog, stepper);
+// StateEstimator stateEstimator;
 
 void setup() {
     // Serial for debug output and SIM_MODE status messages
@@ -160,6 +162,8 @@ void setup() {
 
     if (!sdLog.init()) Serial.println("SD card init failed");
 
+    // stateEstimator.init(baro1.readAll().altitude);
+
     Serial.print("Sensor status: 0x");
     Serial.println(sensorStatus, HEX);
     Serial.println("GNC-Airbrakes firmware initialized");
@@ -250,7 +254,7 @@ void loop() {
 #else
     SensorData data = readAllSensors();
 
-    //this is where state estimator should be called
+    // const EKFState& state = stateEstimator.update(data);
 #endif
 
 #ifdef DEBUG_MODE
