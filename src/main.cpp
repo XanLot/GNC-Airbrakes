@@ -10,9 +10,15 @@
 #include "state_machine.hpp"
 
 #ifdef SIM_MODE
+// SIM_MODE allows the firmware to simulate sensor data from SIM.BIN on the SD card.
+// This is used to test the firmware with logged or calcualted data, without having the sensors wired up. 
+// SIM.BIN is generated from the Matlab script sim_profile_gen.m
+//then you put SIM.BIN on the sd card at the root directory and run `make sim` then `make upload`
 #include "sim_data.hpp"
 static int simTick = 0;
 #else
+
+//Sensor Headers 
 #include "pins.hpp"
 #include "imu.hpp"
 #include "barometer.hpp"
@@ -21,10 +27,16 @@ static int simTick = 0;
 #endif
 
 #ifdef DEBUG_MODE
+
+//allows printing of sensor data to serial and use with sensor_monitor.py, but does not run the state machine or log to SD card.
+
 #include "debug_mode.hpp"
 #endif
 
 #ifndef SIM_MODE
+
+
+//Sensor objects and status bitfield
 IMU          imu1, imu2, imu3, imu4;
 Barometer    baro1, baro2;
 Magnetometer mag;
@@ -47,9 +59,11 @@ sd_log       sdLog;
 StateMachine stateMachine(sdLog, stepper);
 
 void setup() {
+    // Serial for debug output and SIM_MODE status messages
     Serial.begin(115200);
     delay(500);
-    stepper.init();
+
+
 
 #ifdef SIM_MODE
     Serial.println("=== SIM_MODE: reading flight profile from SD card ===");
@@ -67,12 +81,19 @@ void setup() {
     Serial.println(" frames");
 
 #else
+    
     SPI.begin();
     SPI1.setMISO(39);  // PCB routes SPI1 MISO to pin 39, not the default pin 1
     SPI1.begin();
     Wire.begin();
     Wire.setClock(400000);
 
+
+    //initalize stepper motor 
+    stepper.init();
+
+
+//different sensor configs for debug vs flight modes, set in imu.hpp and barometer.hpp
 #ifdef DEBUG_MODE
     const IMUConfig&       imuCfg  = IMU::debugConfig;
     const BarometerConfig& baroCfg = Barometer::debugConfig;
@@ -81,6 +102,8 @@ void setup() {
     const BarometerConfig& baroCfg = Barometer::flightConfig;
 #endif
 
+
+    //sensor Initialization 
     if (imu1.init(imuCfg, IMU1_CS, &SPI)) {
         sensorStatus |= SENSOR_IMU1;
     } else {
