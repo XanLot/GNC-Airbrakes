@@ -2,29 +2,8 @@
 
 #include <cmath>
 
-// ── Apogee predictor ──────────────────────────────────────────────────────
 
-struct ApogeePrediction {
-    double Cd_cmd;
-    double apogee_alt;
-    double t_apogee;
-};
 
-ApogeePrediction predictApogee(
-    double ay, double vy, double alt,
-    double tgt_alt, double Sref,
-    double Cd_clean, double Cd_max,
-    double mass, double currentTime
-);
-
-// ── MPC controller ────────────────────────────────────────────────────────
-
-struct MPCState {
-    double altitude;
-    double velocity;
-    double acceleration;
-    double timestamp;
-};
 
 struct MPCOutput {
     double Cd_cmd;
